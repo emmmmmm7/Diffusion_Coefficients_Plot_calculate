@@ -1,0 +1,11 @@
+{
+    "ENABLE_FITTING": 1,
+    "target_keyword": "ti",
+    "output_dir": "/path/to/output",
+    "fit_ranges": {
+        "900K": {
+            "fit_start": 20000,
+            "fit_end": 30000
+        }
+    }
+}

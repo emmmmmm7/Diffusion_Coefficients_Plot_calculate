@@ -1,0 +1,4 @@
+Fitting Results:
+Fitted line: ln(D) = nan * T + nan
+R² = 0.0000
+D0 = exp(nan) = nan m²/s
