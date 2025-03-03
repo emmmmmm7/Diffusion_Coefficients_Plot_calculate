@@ -1,4 +1,0 @@
-Fitting Results:
-Fitted line: ln(D) = -5.04e-03 * T + -6.91e+00
-R² = 0.8176
-D0 = exp(-6.91e+00) = 9.99e-04 m²/s
