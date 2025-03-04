@@ -109,11 +109,11 @@ def save_diffusion_results(results, output_file, append=False, config_data=None)
             writer.writerow(["Temperature", "Diffusion Coefficient (m²/s)", "R²"])  # CSV 头部
         for file, (D, r_squared, temperature) in results.items():
             writer.writerow([temperature, f"{D:.6e}", f"{r_squared:.4f}"])  # 确保数据格式正确
-            print(f"{temperature}已经成功写入")
+            logging.info(f"{temperature}已经成功写入")
         # for key, (D, r_squared, temperature) in results.items():
         #     # 仅保存包含关键字的结果（如果需要）
         #     if config_data["target_keyword"] in key.lower():
         #         writer.writerow([temperature, f"{D:.6e}", f"{r_squared:.4f}"])
         #         print(f"{temperature}已经成功写入")
-    print(f"扩散系数已保存至: {output_file}")
+    logging.info(f"扩散系数已保存至: {output_file}")
 

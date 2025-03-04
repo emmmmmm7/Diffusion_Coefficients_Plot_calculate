@@ -4,6 +4,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
+from matplotlib.ticker import ScalarFormatter
 
 def parse_temperature(temp_str):
     """
@@ -54,131 +55,178 @@ def plot_diffusion_coefficients(csv_file, save_path):
     同时进行线性回归拟合，并将拟合线绘制在图中，
     最后将图保存到 save_path，并将拟合结果写入文本文件保存到 output 文件夹中。
     """
-    # 读取 CSV 文件数据
+    # ==================== 数据读取与预处理 ==================== 
     raw_data = read_diffusion_csv(csv_file)
     if not raw_data:
-        logging.error("未读取到数据！")
+        logging.error("未读取到有效数据，请检查 CSV 文件格式")
         return
 
-    temperatures_used = []
-    avg_lnD = []
-    err_lnD = []
+    # 初始化数据容器
+    inverse_temps = []  # x轴: 1/T (K⁻¹)
+    lnD_means = []      # y轴: ln(D) 均值
+    lnD_errors = []     # y轴误差: ln(D) 标准误
 
-    # 对每个温度组，过滤掉非正值，并计算 ln(D) 的均值和标准误
-    for T in sorted(raw_data.keys()):
-        values = np.array(raw_data[T])
-        # 过滤掉非正值（<= 0）的扩散系数
-        positive_values = values[values > 0]
-        if len(positive_values) == 0:
-            logging.warning(f"温度 {T} 下无正的扩散系数数据，跳过。")
+    # 处理每个温度组
+    for T in sorted(raw_data.keys(), reverse=True):  # 温度从高到低排序
+        D_values = np.array(raw_data[T])
+        
+        # 过滤非正值
+        valid_D = D_values[D_values > 0]
+        if len(valid_D) == 0:
+            logging.warning(f"温度 {T}K 下无有效扩散系数，已跳过")
             continue
-        # 对正值取自然对数
-        ln_values = np.log(positive_values)
-        mean_ln = np.mean(ln_values)
-        std_ln = np.std(ln_values, ddof=1) if len(ln_values) > 1 else 0.0
-        se_ln = std_ln / np.sqrt(len(ln_values))
-        temperatures_used.append(1/T)
-        avg_lnD.append(mean_ln)
-        err_lnD.append(se_ln)
+        
+        # 计算统计量
+        lnD = np.log(valid_D)
+        mean_lnD = np.mean(lnD)
+        std_lnD = np.std(lnD, ddof=1) if len(lnD) > 1 else 0.0
+        se_lnD = std_lnD / np.sqrt(len(lnD))
+        
+        inverse_temps.append(1000 / T)  # 转换为 1/T (10³·K⁻¹)
+        lnD_means.append(mean_lnD)
+        lnD_errors.append(se_lnD)
 
-    # 如果没有温度组留下数据，则退出
-    if len(temperatures_used) == 0:
-        logging.error("所有温度组均无正的扩散系数数据，无法绘图。")
+    if not inverse_temps:
+        logging.error("无有效数据可供绘图")
         return
 
-    temperatures_used = np.array(temperatures_used)
-    avg_lnD = np.array(avg_lnD)
-    err_lnD = np.array(err_lnD)
+    # 转换为 numpy array 便于计算
+    x = np.array(inverse_temps)
+    y = np.array(lnD_means)
+    y_err = np.array(lnD_errors)
 
-    # 绘制图形
-    plt.figure(figsize=(10, 6))
-    ax = plt.gca()  # <--- 新增关键代码：获取坐标轴对象
-
-    # 设置全局字体
+    # ==================== 绘图样式配置 ====================
+    plt.figure(figsize=(8, 6), dpi=150)
+    ax = plt.gca()
+    
+    # 全局字体设置
     plt.rcParams.update({
-        'font.family': 'serif',
-        'font.serif': ['Times New Roman'],
-        'mathtext.fontset': 'stix'  # 数学符号风格
+        'font.family': 'Times New Roman',
+        'mathtext.fontset': 'stix',
+        'axes.labelsize': 12,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10
     })
 
-    # # 使用 errorbar 绘制数据点及误差条，fmt='s-' 表示用方形标记并连接折线
-    # plt.errorbar(temperatures_used, avg_lnD, yerr=err_lnD, fmt='s-', markersize=8, capsize=5, label='Data Points')
-    # 数据点绘制（修改标记样式和颜色）
-    plt.errorbar(temperatures_used, avg_lnD, yerr=err_lnD, 
-                fmt='o', markersize=8, markerfacecolor='white',  # 空心圆点
-                markeredgewidth=1.5, capsize=5, 
-                ecolor='dimgrey', elinewidth=1.2,  # 灰色误差线
-                color='steelblue', label='Experimental Data')  # 主色
+    # 颜色方案
+    PRIMARY_COLOR = '#2C5F94'   # 深蓝色
+    SECONDARY_COLOR = '#97CC04' # 鲜绿色
+    ERROR_COLOR = '#6B6B6B'     # 中性灰
+
+    # ==================== 数据可视化 ====================
+    # 主数据点（带误差条）
+    main_plot = ax.errorbar(
+        x, y, yerr=y_err,
+        fmt='o', markersize=8,
+        markerfacecolor='white',
+        markeredgewidth=1.5,
+        ecolor=ERROR_COLOR,
+        elinewidth=1.2,
+        capsize=4,
+        color=PRIMARY_COLOR,
+        label='Experimental Data'
+    )
+
+    # 误差值标注（科学计数法转换）
+    for xi, yi, err in zip(x, y, y_err):
+        if err <= 1e-10:  # 忽略极小误差
+            continue
+        
+        # 动态计算偏移量
+        y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+        offset = y_range * 0.03
+        
+        # 转换为 1.2×10⁻³ 格式
+        exponent = np.floor(np.log10(err))
+        coeff = err / 10**exponent
+        err_str = r"$\mathregular{{{:.1f}×10^{{{:.0f}}}}$".format(coeff, exponent)
+        
+        ax.text(
+            xi, yi + err + offset, err_str,
+            ha='center', va='bottom',
+            fontsize=8, color=ERROR_COLOR,
+            rotation=30  # 倾斜防止重叠
+        )
+
+    # ==================== 线性回归 ====================
+    regress = linregress(x, y)
+    slope = regress.slope
+    intercept = regress.intercept
+    r_squared = regress.rvalue**2
     
-    # 在每个数据点上显示误差值（标准误），使用科学计数法格式
-    for x, y, err in zip(temperatures_used, avg_lnD, err_lnD):
-        plt.text(x, y + err, f'{err:.2e}', ha='center', va='bottom', fontsize=8)
+    # 生成拟合线
+    x_fit = np.linspace(x.min(), x.max(), 100)
+    y_fit = intercept + slope * x_fit
 
-    # 对平均 ln(D) 数据进行线性回归拟合
-    regression_result = linregress(temperatures_used, avg_lnD)
-    slope, intercept, r_value, p_value, std_err = regression_result
-    # 生成拟合线数据
-    fit_line = intercept + slope * temperatures_used
+    # 拟合线绘制
+    ax.plot(
+        x_fit, y_fit, 
+        color=SECONDARY_COLOR, 
+        linestyle='--',
+        linewidth=2,
+        label=(
+            r'$\mathregular{\ln(D) = \frac{%.2f}{T} + %.2f}$' % (slope*1000, intercept) + '\n' + 
+            r'$\mathregular{R^2 = %.3f}$' % r_squared
+        )
+    )
 
-    # plt.plot(temperatures_used, fit_line, 'r--', label=f'Fit: y={slope:.2e}x+{intercept:.2e}\n$R^2$={r_value**2:.4f}')
-
-    # 误差值标注（转换为×10格式）
-    for x, y, err in zip(temperatures_used, avg_lnD, err_lnD):
-        # err_str = "{:.1f}×10$^{{{}}}$".format(err / 10**np.floor(np.log10(err)), 
-        #                 int(np.floor(np.log10(err))))
-        # plt.text(x, y + err, err_str, 
-        #         ha='center', va='bottom', 
-        #         fontsize=9, color='dimgrey')
-        if err > 0:
-            err_str = "{:.1f}×10$^{{{}}}$".format(err / 10**np.floor(np.log10(err)), 
-            int(np.floor(np.log10(err))))
-            plt.text(x, y + err, err_str, 
-                ha='center', va='bottom', 
-                fontsize=9, color='dimgrey')
-        else:
-            # 对于零或负的误差，显示一个默认值或直接跳过
-            plt.text(x, y + err, "N/A", ha='center', va='bottom', fontsize=9, color='dimgrey')
-    logging.info(f"拟合结果：slope={slope:.2e}, intercept={intercept:.2e}, R²={r_value**2:.4f}")
-    # 拟合线标签（LaTeX渲染）
-    fit_label = (
-        r'$\ln(D) = {:.2f} \cdot \frac{{1}}{{T}} + {:.2f}$' # 数学公式
-        '\n'  # 换行
-        r'$R^2 = {:.3f}$'  # 上标
-    ).format(slope, intercept, r_value**2)
-
-    from matplotlib.ticker import ScalarFormatter
+    # ==================== 坐标轴优化 ====================
+    # X轴设置
+    ax.set_xlabel(
+        r'$\mathregular{10^{-3} \cdot T^{-1}\ (K^{-1})}$', 
+        fontsize=12, 
+        labelpad=8
+    )
     ax.xaxis.set_major_formatter(ScalarFormatter(useMathText=True))
     ax.ticklabel_format(axis='x', style='sci', scilimits=(-3,3))
+    ax.xaxis.offsetText.set_fontsize(10)
 
-    plt.plot(temperatures_used, fit_line, 
-            color='crimson', linestyle='--', linewidth=1.8,
-            label=fit_label)
-    
-    # plt.xlabel('Temperature (K)')
-    # 新标签（使用LaTeX格式）
-    plt.xlabel(r'$1/T\ (\mathrm{K^{-1}})$', fontsize=12)
-    plt.ylabel('ln(D) (ln(m²/s))')
-    plt.title('Diffusion Coefficient vs Temperature (ln scale)')
-    plt.legend(loc='best')
-    plt.grid(True)
-    plt.gca().tick_params(direction='in')
+    # Y轴设置
+    ax.set_ylabel(
+        r'$\mathregular{\ln(D)\ (m^2/s)}$', 
+        fontsize=12, 
+        labelpad=8
+    )
+
+    # 网格线
+    ax.grid(
+        True, 
+        which='major', 
+        linestyle=':', 
+        linewidth=0.5, 
+        alpha=0.6, 
+        color=ERROR_COLOR
+    )
+
+    # ==================== 图例与输出 ====================
+    ax.legend(
+        loc='upper right',
+        frameon=True,
+        framealpha=0.9,
+        edgecolor='none',
+        fontsize=10
+    )
+
     plt.tight_layout()
-
-    # 确保保存目录存在
+    
+    # 保存图像
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    plt.savefig(save_path, dpi=300)
-    logging.info(f"Diffusion Coefficient plot saved to: {save_path}")
+    plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
 
-    # 计算 D0 = exp(intercept) 并保存拟合结果到文本文件
+    # ==================== 拟合结果输出 ====================
     D0 = np.exp(intercept)
-    fitting_results_file = os.path.join(os.path.dirname(save_path), "fitting_results.txt")
-    with open(fitting_results_file, "w") as f:
-        f.write("Fitting Results:\n")
-        f.write(f"Fitted line: ln(D) = {slope:.2e} * (1/T) + {intercept:.2e}\n")
-        f.write(f"R² = {r_value**2:.4f}\n")
-        f.write(f"D0 = exp({intercept:.2e}) = {D0:.2e} m²/s\n")
-    logging.info(f"Fitting results saved to: {fitting_results_file}")
+    result_text = f"""Fitting Results:
+    - Slope (Ea/R): {slope:.2e} K
+    - Intercept (lnD0): {intercept:.2e}
+    - R²: {r_squared:.4f}
+    - D0: {D0:.2e} m²/s
+    """
+    
+    result_path = os.path.join(os.path.dirname(save_path), "fitting_results.txt")
+    with open(result_path, 'w') as f:
+        f.write(result_text)
+    logging.info(f"拟合结果已保存至 {result_path}")
 
 if __name__ == '__main__':
     # 示例用法（根据实际路径修改）

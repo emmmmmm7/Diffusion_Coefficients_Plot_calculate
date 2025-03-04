@@ -7,7 +7,7 @@ def get_data_folder():
     获取数据文件夹路径
     :return: 数据文件夹路径
     """
-    return "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/模拟结果/取代位/Ti/100ps/Ti"  # 根据实际情况调整路径
+    return "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/模拟结果/取代位/Ti/30ps"  # 根据实际情况调整路径
 
 def get_output_file():
     """
