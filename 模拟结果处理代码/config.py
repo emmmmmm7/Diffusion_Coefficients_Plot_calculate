@@ -64,7 +64,7 @@ def load_config():
         
         # 构建默认的fit_ranges（每个温度组默认20000-30000）
         fit_ranges = {
-            temp: {"fit_start": 20000, "fit_end": 30000}
+            temp: {"fit_start": 20, "fit_end": 30}
             for temp in temperature_groups
         }
         
@@ -73,7 +73,9 @@ def load_config():
             "ENABLE_FITTING": 1,
             "target_keyword": "ti",
             "output_dir": "/path/to/output",
-            "fit_ranges": fit_ranges
+            "fit_ranges": fit_ranges,
+            "start_time_ps": 20,  # 新增：读取起始时间（皮秒）
+            "end_time_ps": 30     # 新增：读取结束时间（皮秒）
         }
         
         with open(CONFIG_FILE_PATH, 'w') as f:

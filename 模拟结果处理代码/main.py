@@ -83,7 +83,7 @@ def main():
     # 初次执行数据处理流程
     run_pipeline()
 
-    check_interval = 10  # 每隔10秒检查一次配置文件是否修改
+    check_interval = 2  # 每隔10秒检查一次配置文件是否修改
     while True:
         try:
             time.sleep(check_interval)
