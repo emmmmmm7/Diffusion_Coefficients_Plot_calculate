@@ -29,7 +29,12 @@ def process_single_file(file_path, diffusion_results, data_dict, fit_params, tem
     # 使用温度前缀生成唯一键
     unique_key = f"{temperature}_{file_name}"
     
-    time, msd = data_reader.safe_read_file(file_path, data_reader.read_data)
+    result = data_reader.safe_read_file(file_path, data_reader.read_data, config_data["start_time_ps"], config_data["end_time_ps"])
+    if result is not None:
+        time, msd = result
+    else:
+        time, msd = [], []  # 避免解包错误
+  
     if time and msd:
         # 将数据存入 data_dict 时也使用 unique_key
         data_dict[unique_key] = (time, msd)

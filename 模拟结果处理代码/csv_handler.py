@@ -1,4 +1,5 @@
 import csv
+import logging
 
 def load_diffusion_results(csv_file):
     """
@@ -15,8 +16,8 @@ def load_diffusion_results(csv_file):
                 file_name, D, r_squared = row
                 results[file_name] = (float(D), float(r_squared))
     except FileNotFoundError:
-        print(f"文件 {csv_file} 未找到")
+        logging.error(f"文件 {csv_file} 未找到")
     except Exception as e:
-        print(f"读取 CSV 文件 {csv_file} 时发生错误: {e}")
+        logging.error(f"读取 CSV 文件 {csv_file} 时发生错误: {e}")
     
     return results

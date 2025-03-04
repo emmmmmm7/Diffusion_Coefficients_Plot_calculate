@@ -1,12 +1,13 @@
 import os
+import logging
 
 def safe_read_file(file_path, read_function, *args, **kwargs):
     try:
         return read_function(file_path, *args, **kwargs)
     except FileNotFoundError:
-        print(f"文件未找到: {file_path}")
+        logging.info(f"文件未找到: {file_path}")
     except Exception as e:
-        print(f"读取文件 {file_path} 时出错: {e}")
+        logging.error(f"读取文件 {file_path} 时出错: {e}")
     return None
 
 def read_data(file_path, start_time_ps=20, end_time_ps=30):
@@ -17,7 +18,7 @@ def read_data(file_path, start_time_ps=20, end_time_ps=30):
     :param start_time_ps: 起始时间（皮秒）
     :param end_time_ps: 结束时间（皮秒）
     """
-    time = []
+    time_original = []  # 存储原始时间
     tot_msd = []
 
     # 转换为fs进行比较
@@ -33,8 +34,16 @@ def read_data(file_path, start_time_ps=20, end_time_ps=30):
                 continue  # 跳过不完整的行
             time_fs = float(data[0])
             if start_fs <= time_fs <= end_fs:  # 新增过滤条件
-                time.append(time_fs / 1000)  # 转换为皮秒
+                time_original.append(time_fs / 1000)  # 转换为皮秒
                 tot_msd.append(float(data[4]))
+    # 归零化处理（关键修改点）
+    if time_original:
+        start_ps = time_original[0]  # 获取实际起始时间
+        time = [t - start_ps for t in time_original]  # 归零化
+    else:
+        time = []
+    
+    # logging.info(f"时间归零化完成，新范围: [{min(time, default=0):.1f}, {max(time, default=0):.1f}] ps")
     return time, tot_msd
 
 def get_all_data_files(folder_path):

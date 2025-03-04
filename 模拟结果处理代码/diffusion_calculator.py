@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import linregress
+import logging
 
 def compute_diffusion_coefficient(time, msd, fit_start, fit_end):
     """
@@ -13,7 +14,7 @@ def compute_diffusion_coefficient(time, msd, fit_start, fit_end):
     # 选择拟合区域
     fit_indices = [i for i, t in enumerate(time) if fit_start <= t <= fit_end]
     if len(fit_indices) < 2:
-        print("拟合区域数据点不足，无法计算 D")
+        logging.warning("拟合区域数据点不足，无法计算 D")
         return None
 
     fit_time = np.array([time[i] for i in fit_indices])

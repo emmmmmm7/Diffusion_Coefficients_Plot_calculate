@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import logging
 import numpy as np
 import os
 from matplotlib.ticker import MaxNLocator  # <--- 新增导入
@@ -76,7 +77,7 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     #         continue  # 忽略非数字标签，避免错误
 
     # 标签设置
-    plt.xlabel('Time (fs)', fontsize=12)
+    plt.xlabel('Time (ps)', fontsize=12)
     plt.ylabel('Total MSD (Å²)', fontsize=12)  # <--- 修正单位符号
     plt.title('Time vs Total MSD', fontsize=14)
     plt.legend(loc='best')
@@ -85,7 +86,7 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"图像已保存: {save_path}")
+        logging.info(f"图像已保存: {save_path}")
         plt.close()
     else:
         plt.show()

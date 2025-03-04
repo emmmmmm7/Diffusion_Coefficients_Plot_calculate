@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,7 +16,7 @@ def parse_temperature(temp_str):
         else:
             return float(temp_str)
     except Exception as e:
-        print(f"温度转换错误: {temp_str} -> {e}")
+        logging.error(f"温度转换错误: {temp_str} -> {e}")
         return None
 
 def read_diffusion_csv(csv_file):
@@ -38,7 +39,7 @@ def read_diffusion_csv(csv_file):
             try:
                 D = float(D_str)
             except Exception as e:
-                print(f"扩散系数转换错误: {D_str} -> {e}")
+                logging.error(f"扩散系数转换错误: {D_str} -> {e}")
                 continue
             if T not in data:
                 data[T] = []
@@ -56,7 +57,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
     # 读取 CSV 文件数据
     raw_data = read_diffusion_csv(csv_file)
     if not raw_data:
-        print("未读取到数据！")
+        logging.error("未读取到数据！")
         return
 
     temperatures_used = []
@@ -69,7 +70,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
         # 过滤掉非正值（<= 0）的扩散系数
         positive_values = values[values > 0]
         if len(positive_values) == 0:
-            print(f"温度 {T} 下无正的扩散系数数据，跳过。")
+            logging.warning(f"温度 {T} 下无正的扩散系数数据，跳过。")
             continue
         # 对正值取自然对数
         ln_values = np.log(positive_values)
@@ -82,7 +83,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
 
     # 如果没有温度组留下数据，则退出
     if len(temperatures_used) == 0:
-        print("所有温度组均无正的扩散系数数据，无法绘图。")
+        logging.error("所有温度组均无正的扩散系数数据，无法绘图。")
         return
 
     temperatures_used = np.array(temperatures_used)
@@ -137,7 +138,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
         else:
             # 对于零或负的误差，显示一个默认值或直接跳过
             plt.text(x, y + err, "N/A", ha='center', va='bottom', fontsize=9, color='dimgrey')
-    print(f"拟合结果：slope={slope:.2e}, intercept={intercept:.2e}, R²={r_value**2:.4f}")
+    logging.info(f"拟合结果：slope={slope:.2e}, intercept={intercept:.2e}, R²={r_value**2:.4f}")
     # 拟合线标签（LaTeX渲染）
     fit_label = (
         r'$\ln(D) = {:.2f} \cdot \frac{{1}}{{T}} + {:.2f}$' # 数学公式
@@ -166,7 +167,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
     # 确保保存目录存在
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.savefig(save_path, dpi=300)
-    print(f"Diffusion Coefficient plot saved to: {save_path}")
+    logging.info(f"Diffusion Coefficient plot saved to: {save_path}")
     plt.close()
 
     # 计算 D0 = exp(intercept) 并保存拟合结果到文本文件
@@ -177,7 +178,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
         f.write(f"Fitted line: ln(D) = {slope:.2e} * (1/T) + {intercept:.2e}\n")
         f.write(f"R² = {r_value**2:.4f}\n")
         f.write(f"D0 = exp({intercept:.2e}) = {D0:.2e} m²/s\n")
-    print(f"Fitting results saved to: {fitting_results_file}")
+    logging.info(f"Fitting results saved to: {fitting_results_file}")
 
 if __name__ == '__main__':
     # 示例用法（根据实际路径修改）
