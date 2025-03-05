@@ -5,7 +5,7 @@ import os
 from matplotlib.ticker import MaxNLocator  # <--- 新增导入
 import config
 
-def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fit_start=None, fit_end=None, line_style='-', line_width=1, grid=True):
+def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fit_start=None, fit_end=None, line_style='-', line_width=1):
     """
     绘制 MSD 曲线，并在每条曲线上添加拟合线（如果启用）
     :param data_dict: { unique_key: (time, msd) } 字典
@@ -15,7 +15,7 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     :param fit_start: 拟合起始时间
     :param fit_end: 拟合结束时间
     """
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(20, 6))
 
     # 设置全局字体
     plt.rcParams.update({
@@ -51,12 +51,33 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
 
             # 显示拟合表达式，避免挡住数据线
             if np.any(fit_mask):
-                text_x = fit_time[fit_mask][-1]
-                text_y = fit_line[fit_mask][-1]
-                offset = 0.05 * (plt.ylim()[1] - plt.ylim()[0])
-                plt.text(text_x, text_y + offset, f'y={slope:.2e}x+{intercept:.2e}', 
-                         fontsize=8, verticalalignment='bottom', horizontalalignment='right')
-
+                # 计算最佳位置
+                x_pos = np.median(fit_time[fit_mask])  # 使用中位数位置
+                y_pos = np.median(fit_line[fit_mask])
+                
+                # 动态偏移
+                y_range = plt.ylim()[1] - plt.ylim()[0]
+                offset = y_range * 0.04
+                
+                # 智能对齐
+                ha = 'left' if x_pos < np.median(plt.xlim()) else 'right'
+                va = 'bottom' if y_pos < np.median(plt.ylim()) else 'top'
+                
+                plt.text(
+                    x_pos, y_pos + (offset if va == 'bottom' else -offset),
+                    r'$\mathregular{y = {%.5f}x  %+.2f}$' % (slope, intercept),  # 添加R²值
+                    fontsize=9,
+                    verticalalignment=va,
+                    horizontalalignment=ha,
+                    # bbox=dict(boxstyle="round,pad=0.3", 
+                    #         facecolor='white', 
+                    #         edgecolor='gray', 
+                    #         alpha=0.8),
+                    rotation_mode='anchor',
+                    rotation=np.clip(np.arctan(slope)*180/np.pi, -45, 45)  # 限制旋转角度
+                )
+                
+    # ==================== 坐标轴优化 ==================== 
     # 动态设置 x 轴的范围：确保 x 轴的起点和终点根据时间数据来确定
     plt.xlim([min_time, max_time])
     # 坐标轴刻度优化
@@ -68,20 +89,17 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     ax.xaxis.set_major_locator(MaxNLocator(nbins=5, prune=None))  # <--- 防止x轴最低刻度被裁剪
     ax.yaxis.set_major_locator(MaxNLocator(nbins=7, prune=None))  # <--- 防止y轴最低刻度被裁剪
 
-    # # 让 max_time 的标签向左偏移，避免太突兀
-    # for label in ax.get_xticklabels():
-    #     try:
-    #         if np.isclose(float(label.get_text()), max_time, atol=1e-6):  # 允许浮点数误差
-    #             label.set_ha('right')  # 让 max_time 的标签靠右，使其视觉上向左偏移
-    #     except ValueError:
-    #         continue  # 忽略非数字标签，避免错误
-
     # 标签设置
     plt.xlabel('Time (ps)', fontsize=12)
-    plt.ylabel('Total MSD (Å²)', fontsize=12)  # <--- 修正单位符号
-    plt.title('Time vs Total MSD', fontsize=14)
-    plt.legend(loc='best')
-    plt.grid(grid)
+    plt.ylabel('MSD (Å²)', fontsize=12)  # <--- 修正单位符号
+    ax.legend(
+        loc='best',
+        frameon=True,
+        framealpha=0.9,
+        edgecolor='none',
+        fontsize=10
+    )
+    plt.grid(False)
     plt.gca().tick_params(direction='in')
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)

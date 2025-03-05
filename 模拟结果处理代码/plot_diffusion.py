@@ -64,7 +64,6 @@ def plot_diffusion_coefficients(csv_file, save_path):
     # 初始化数据容器
     inverse_temps = []  # x轴: 1/T (K⁻¹)
     lnD_means = []      # y轴: ln(D) 均值
-    lnD_errors = []     # y轴误差: ln(D) 标准误
 
     # 处理每个温度组
     for T in sorted(raw_data.keys(), reverse=True):  # 温度从高到低排序
@@ -79,12 +78,10 @@ def plot_diffusion_coefficients(csv_file, save_path):
         # 计算统计量
         lnD = np.log(valid_D)
         mean_lnD = np.mean(lnD)
-        std_lnD = np.std(lnD, ddof=1) if len(lnD) > 1 else 0.0
-        se_lnD = std_lnD / np.sqrt(len(lnD))
         
         inverse_temps.append(1000 / T)  # 转换为 1/T (10³·K⁻¹)
         lnD_means.append(mean_lnD)
-        lnD_errors.append(se_lnD)
+        logging.info(f"温度 {T}K: ln(D) = {mean_lnD:.4f}")
 
     if not inverse_temps:
         logging.error("无有效数据可供绘图")
@@ -93,7 +90,6 @@ def plot_diffusion_coefficients(csv_file, save_path):
     # 转换为 numpy array 便于计算
     x = np.array(inverse_temps)
     y = np.array(lnD_means)
-    y_err = np.array(lnD_errors)
 
     # ==================== 绘图样式配置 ====================
     plt.figure(figsize=(8, 6), dpi=150)
@@ -115,38 +111,15 @@ def plot_diffusion_coefficients(csv_file, save_path):
 
     # ==================== 数据可视化 ====================
     # 主数据点（带误差条）
-    main_plot = ax.errorbar(
-        x, y, yerr=y_err,
-        fmt='o', markersize=8,
+    ax.errorbar(
+        x, y, 
+        fmt='o', markersize=4,
         markerfacecolor='white',
-        markeredgewidth=1.5,
-        ecolor=ERROR_COLOR,
-        elinewidth=1.2,
-        capsize=4,
+        markeredgewidth=1.5,       
+        linestyle='',
         color=PRIMARY_COLOR,
         label='Experimental Data'
     )
-
-    # 误差值标注（科学计数法转换）
-    for xi, yi, err in zip(x, y, y_err):
-        if err <= 1e-10:  # 忽略极小误差
-            continue
-        
-        # 动态计算偏移量
-        y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
-        offset = y_range * 0.03
-        
-        # 转换为 1.2×10⁻³ 格式
-        exponent = np.floor(np.log10(err))
-        coeff = err / 10**exponent
-        err_str = r"$\mathregular{{{:.1f}×10^{{{:.0f}}}}$".format(coeff, exponent)
-        
-        ax.text(
-            xi, yi + err + offset, err_str,
-            ha='center', va='bottom',
-            fontsize=8, color=ERROR_COLOR,
-            rotation=30  # 倾斜防止重叠
-        )
 
     # ==================== 线性回归 ====================
     regress = linregress(x, y)
@@ -165,7 +138,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
         linestyle='--',
         linewidth=2,
         label=(
-            r'$\mathregular{\ln(D) = \frac{%.2f}{T} + %.2f}$' % (slope*1000, intercept) + '\n' + 
+            r'$\mathregular{\ln(D) = \frac{%.2f}{T}  %+.2f}$' % (slope*1000, intercept) + '\n' + 
             r'$\mathregular{R^2 = %.3f}$' % r_squared
         )
     )
@@ -173,7 +146,7 @@ def plot_diffusion_coefficients(csv_file, save_path):
     # ==================== 坐标轴优化 ====================
     # X轴设置
     ax.set_xlabel(
-        r'$\mathregular{10^{-3} \cdot T^{-1}\ (K^{-1})}$', 
+        r'$\mathregular{1000/T\ (K^{-1})}$', 
         fontsize=12, 
         labelpad=8
     )
@@ -187,20 +160,15 @@ def plot_diffusion_coefficients(csv_file, save_path):
         fontsize=12, 
         labelpad=8
     )
-
+    
     # 网格线
-    ax.grid(
-        True, 
-        which='major', 
-        linestyle=':', 
-        linewidth=0.5, 
-        alpha=0.6, 
-        color=ERROR_COLOR
-    )
-
+    ax.grid(False)
+    
+    # 坐标轴刻度朝内
+    ax.tick_params(direction='in')
     # ==================== 图例与输出 ====================
     ax.legend(
-        loc='upper right',
+        loc='best',
         frameon=True,
         framealpha=0.9,
         edgecolor='none',

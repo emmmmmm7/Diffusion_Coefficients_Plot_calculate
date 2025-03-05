@@ -7,7 +7,7 @@ def get_data_folder():
     获取数据文件夹路径
     :return: 数据文件夹路径
     """
-    return "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/模拟结果/取代位/Ti/30ps"  # 根据实际情况调整路径
+    return "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/模拟结果/取代位/Ti/100ps"  # 根据实际情况调整路径
 
 def get_output_file():
     """
@@ -81,3 +81,6 @@ def load_config():
         with open(CONFIG_FILE_PATH, 'w') as f:
             json.dump(config_data, f, indent=4)
     return config_data
+
+# 颜色序列配置
+COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
