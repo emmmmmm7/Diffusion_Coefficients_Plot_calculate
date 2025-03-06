@@ -27,18 +27,27 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     # 初始化变量来存储 time 的最大和最小值
     min_time = float('inf')
     max_time = float('-inf')
+    legend_handles = []  # 存储 legend 句柄
+    fit_legend_entries = []  # 存储 fit 线的 legend
 
     # 遍历数据，找到时间的最小值和最大值
     for key, (time, msd) in data_dict.items():
         # 更新最小时间和最大时间
         min_time = min(min_time, np.min(time))
         max_time = max(max_time, np.max(time))
+
+        # 处理键名
+        ele_name = key.split("-")[-1].replace(".dat", "")
+
         
         # 绘制数据线
-        plt.plot(time, msd, label=key, linestyle=line_style, linewidth=line_width)
+        # 绘制数据曲线，并保存句柄
+        line, = plt.plot(time, msd, label=ele_name, linestyle=line_style, linewidth=line_width)
+        legend_handles.append(line)
 
         # 判断是否需要绘制拟合线：只对键中包含 target_keyword 的数据绘制拟合线
         if fit_params and key in fit_params:
+
             # 如果设置了 target_keyword，则检查
             if target_keyword and target_keyword.lower() not in key.lower():
                 continue
@@ -47,36 +56,18 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
             fit_line = slope * fit_time + intercept
 
             fit_mask = (fit_time >= fit_start) & (fit_time <= fit_end)
-            plt.plot(fit_time[fit_mask], fit_line[fit_mask], linestyle='--', linewidth=1, label=f"{key} (fit)")
+            plt.plot(fit_time[fit_mask], fit_line[fit_mask], linestyle='--', linewidth=1, label=f"{ele_name} (fit)")
 
-            # 显示拟合表达式，避免挡住数据线
-            if np.any(fit_mask):
-                # 计算最佳位置
-                x_pos = np.median(fit_time[fit_mask])  # 使用中位数位置
-                y_pos = np.median(fit_line[fit_mask])
-                
-                # 动态偏移
-                y_range = plt.ylim()[1] - plt.ylim()[0]
-                offset = y_range * 0.04
-                
-                # 智能对齐
-                ha = 'left' if x_pos < np.median(plt.xlim()) else 'right'
-                va = 'bottom' if y_pos < np.median(plt.ylim()) else 'top'
-                
-                plt.text(
-                    x_pos, y_pos + (offset if va == 'bottom' else -offset),
-                    r'$\mathregular{y = {%.5f}x  %+.2f}$' % (slope, intercept),  # 添加R²值
-                    fontsize=9,
-                    verticalalignment=va,
-                    horizontalalignment=ha,
-                    # bbox=dict(boxstyle="round,pad=0.3", 
-                    #         facecolor='white', 
-                    #         edgecolor='gray', 
-                    #         alpha=0.8),
-                    rotation_mode='anchor',
-                    rotation=np.clip(np.arctan(slope)*180/np.pi, -45, 45)  # 限制旋转角度
-                )
-                
+            # 绘制拟合线，并捕获句柄
+            fit_line, = plt.plot(
+                fit_time[fit_mask],
+                fit_line[fit_mask],
+                linestyle='--',
+                linewidth=1,
+                label=f"Fit_Line_{ele_name}:"  # 确保标签唯一性
+            )
+            fit_legend_entries.append((fit_line, fit_line.get_label() + r'$\mathregular{y = {%.5f}x  %+.4f}$' % (slope, intercept)))  # 存储句柄和标签
+
     # ==================== 坐标轴优化 ==================== 
     # 动态设置 x 轴的范围：确保 x 轴的起点和终点根据时间数据来确定
     plt.xlim([min_time, max_time])
@@ -92,7 +83,13 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     # 标签设置
     plt.xlabel('Time (ps)', fontsize=12)
     plt.ylabel('MSD (Å²)', fontsize=12)  # <--- 修正单位符号
+    handles, labels = zip(*[(h, h.get_label()) for h in legend_handles])  # 数据曲线
+    if fit_legend_entries:
+        fit_handles, fit_labels = zip(*fit_legend_entries)  # 拟合曲线
+        handles += fit_handles
+        labels += fit_labels
     ax.legend(
+        handles, labels,
         loc='best',
         frameon=True,
         framealpha=0.9,
