@@ -83,7 +83,7 @@ def process_temperature_folder(root_folder, output_dir, diffusion_results, fit_p
 
     # 确保每个温度的数据绘制在单独的图中
     output_img = os.path.join(output_dir, f"MSD_{temperature}.png")  # 使用温度作为文件名
-    plotter.plot_msd(data_dict, fit_params if config_data["ENABLE_FITTING"] else None, output_img, config_data["target_keyword"], fit_start, fit_end)
+    plotter.plot_msd(config_data, data_dict, fit_params if config_data["ENABLE_FITTING"] else None, output_img, config_data["target_keyword"], fit_start, fit_end)
 
 
 def save_diffusion_results(results, output_file, append=False, config_data=None):
@@ -110,10 +110,5 @@ def save_diffusion_results(results, output_file, append=False, config_data=None)
         for file, (D, r_squared, temperature) in results.items():
             writer.writerow([temperature, f"{D:.6e}", f"{r_squared:.4f}"])  # 确保数据格式正确
             logging.info(f"{temperature}已经成功写入")
-        # for key, (D, r_squared, temperature) in results.items():
-        #     # 仅保存包含关键字的结果（如果需要）
-        #     if config_data["target_keyword"] in key.lower():
-        #         writer.writerow([temperature, f"{D:.6e}", f"{r_squared:.4f}"])
-        #         print(f"{temperature}已经成功写入")
     logging.info(f"扩散系数已保存至: {output_file}")
 

@@ -9,7 +9,7 @@ import config
 import colorsys
 import itertools
 
-def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fit_start=None, fit_end=None, line_style='-', line_width=1):
+def plot_msd(config_data, data_dict, fit_params=None, save_path=None, target_keyword=None, fit_start=None, fit_end=None, line_style='-', line_width=1):
     """
     绘制 MSD 曲线，并在每条曲线上添加拟合线（如果启用）
     :param data_dict: { unique_key: (time, msd) } 字典
@@ -21,7 +21,7 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     """
 
     # ========== 新增颜色循环配置 ==========
-    color_cycle = itertools.cycle(config.COLORS)  # 定义在函数内部
+    color_cycle = itertools.cycle(config_data["colors"])  # 定义在函数内部
 
     plt.figure(figsize=(20, 6))
     ax = plt.gca()
@@ -117,16 +117,6 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
             fit_handles.append(fit_line_obj)
             fit_labels.append(f"{ele_name} Fit: "+ r'$\mathregular{y = %.5fx  %+0.4f}$' % (slope, intercept))
 
-            # # 绘制拟合线，并捕获句柄
-            # fit_line, = plt.plot(
-            #     fit_time[fit_mask],
-            #     fit_line[fit_mask],
-            #     linestyle='--',
-            #     linewidth=1,
-            #     label=f"Fit_Line_{ele_name}:"  # 确保标签唯一性
-            # )
-            # fit_legend_entries.append((fit_line, fit_line.get_label() + r'$\mathregular{y = {%.5f}x  %+.4f}$' % (slope, intercept)))  # 存储句柄和标签
-
     # ==================== 坐标轴优化 ==================== 
     # 动态设置 x 轴的范围：确保 x 轴的起点和终点根据时间数据来确定
     plt.xlim([min_time, max_time])
@@ -148,23 +138,6 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
     all_handles = data_handles + fit_handles
     all_labels = data_labels + fit_labels
     
-    # 创建不透明图例句柄
-    # handles, labels = ax.get_legend_handles_labels()
-    # new_handles = []
-    # for h in handles:
-    #     if isinstance(h, mlines.Line2D):
-    #         # 克隆句柄并移除透明度
-    #         new_h = mlines.Line2D(
-    #             [], [],
-    #             color=h.get_color(),
-    #             linestyle=h.get_linestyle(),
-    #             linewidth=h.get_linewidth(),
-    #             marker=h.get_marker(),
-    #             markersize=h.get_markersize(),
-    #             alpha=1.0  # 强制图例不透明
-    #         )
-    #         new_handles.append(new_h)
-    
     # 应用优化后的图例
     ax.legend(
         handles=all_handles,
@@ -175,6 +148,7 @@ def plot_msd(data_dict, fit_params=None, save_path=None, target_keyword=None, fi
         framealpha=0,
         fontsize=10
     )
+    
     plt.grid(False)
     plt.gca().tick_params(direction='in')
     if save_path:

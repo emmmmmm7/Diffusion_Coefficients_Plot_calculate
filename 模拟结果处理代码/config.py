@@ -26,25 +26,6 @@ def get_output_file():
 
 CONFIG_FILE_PATH = os.path.join(get_data_folder(),"config.json")  # 配置文件路径
 
-# def load_config():
-#     """
-#     加载 config.json 文件，如果不存在，则使用默认配置并生成 config.json。
-#     :return: 配置字典
-#     """
-#     if os.path.exists(CONFIG_FILE_PATH):
-#         # 如果 config.json 存在，则加载配置
-#         with open(CONFIG_FILE_PATH, 'r') as f:
-#             config_data = json.load(f)
-#     else:
-#         # 如果 config.json 不存在，则使用默认配置并写入文件
-#         print("未找到 config.json，使用默认配置生成 config.json")
-#         config_data = DEFAULT_CONFIG
-#         with open(CONFIG_FILE_PATH, 'w') as f:
-#             json.dump(config_data, f, indent=4)
-#         print(f"默认配置已保存至 {CONFIG_FILE_PATH}")
-
-#     return config_data
-
 #   # 根据实际情况调整路径
 
 def load_config():
@@ -73,14 +54,15 @@ def load_config():
             "ENABLE_FITTING": 1,
             "target_keyword": "ti",
             "output_dir": "/path/to/output",
+            "colors": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", 
+                      "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+                      "#bcbd22", "#17becf"],  # 新增颜色配置
             "fit_ranges": fit_ranges,
-            "start_time_ps": 20,  # 新增：读取起始时间（皮秒）
-            "end_time_ps": 30     # 新增：读取结束时间（皮秒）
+            "start_time_ps": 20,
+            "end_time_ps": 30,
+            "data_smooth_method": 0  # 新增平滑方法配置
         }
         
         with open(CONFIG_FILE_PATH, 'w') as f:
             json.dump(config_data, f, indent=4)
     return config_data
-
-# 颜色序列配置
-COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
