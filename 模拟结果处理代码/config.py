@@ -7,7 +7,7 @@ def get_data_folder():
     获取数据文件夹路径
     :return: 数据文件夹路径
     """
-    return "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/模拟结果/取代位/Ti/100ps"  # 根据实际情况调整路径
+    return "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/模拟结果/间隙位/Pb/100ps/4-PbO-2"  # 根据实际情况调整路径
 
 def get_output_file():
     """
@@ -15,14 +15,6 @@ def get_output_file():
     :return: 输出文件路径
     """
     return os.path.join(get_data_folder(), "output/diffusion_coefficients.csv")
-
-# # 默认配置（路径配置移除，其他参数保留）
-# DEFAULT_CONFIG = {
-#     "ENABLE_FITTING": 1,  # 1: 启用拟合
-#     "fit_start": 20000,  # 拟合起始时间
-#     "fit_end": 30000,    # 拟合结束时间
-#     "target_keyword": "ti",  # 默认目标关键字
-# }
 
 CONFIG_FILE_PATH = os.path.join(get_data_folder(),"config.json")  # 配置文件路径
 
@@ -60,7 +52,14 @@ def load_config():
             "fit_ranges": fit_ranges,
             "start_time_ps": 20,
             "end_time_ps": 30,
-            "data_smooth_method": 0  # 新增平滑方法配置
+            "data_smooth_method": 0,  # 新增平滑方法配置
+            "smooth_params": {
+                "window_size": 21,
+                "poly_order": 3,
+                "cutoff": 0.1,
+                "fs": 10,
+                "order": 5
+                } # 新增平滑参数配置
         }
         
         with open(CONFIG_FILE_PATH, 'w') as f:

@@ -3,6 +3,37 @@ import logging
 import data_reader
 import diffusion_calculator
 import plotter
+import numpy as np
+from scipy.signal import butter, filtfilt  # 新增依赖
+
+def smooth_data(y, method=0, window_size=50):
+    """
+    数据平滑处理
+    :param method: 0-原始数据 1-移动平均 2-低通滤波
+    :param window_size: 移动平均窗口大小
+    """
+    try:
+        if method == 0:
+            return y
+        elif method == 1:
+            return moving_average(y, window_size)
+        elif method == 2:
+            return lowpass_filter(y)
+        else:
+            raise ValueError("未知的平滑方法")
+    except Exception as e:
+        logging.warning(f"数据平滑失败: {e}")
+        return y
+
+def moving_average(y, window_size):
+    window = np.ones(int(window_size))/float(window_size)
+    return np.convolve(y, window, 'same')
+
+def lowpass_filter(y, cutoff=0.1, fs=10, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return filtfilt(b, a, y)
 
 def get_fit_range_for_temperature(config_data, temperature):
     """
@@ -34,12 +65,18 @@ def process_single_file(file_path, diffusion_results, data_dict, fit_params, tem
         time, msd = result
     else:
         time, msd = [], []  # 避免解包错误
+    
+    # 获取平滑配置
+    smooth_method = config_data.get("data_smooth_method", 0)
+    window_size = config_data.get("smooth_window_size", 10)
   
     if time and msd:
-        # 将数据存入 data_dict 时也使用 unique_key
-        data_dict[unique_key] = (time, msd)
+         # 应用平滑
+        msd_smoothed = smooth_data(msd, method=smooth_method, window_size=window_size)
+        # 应用平滑后的数据保存到字典
+        data_dict[unique_key] = (time, msd_smoothed)
         if config_data["ENABLE_FITTING"]:
-            result = diffusion_calculator.compute_diffusion_coefficient(time, msd, fit_start, fit_end)
+            result = diffusion_calculator.compute_diffusion_coefficient(time, msd_smoothed, fit_start, fit_end)
             if result:
                 D, slope, intercept, r_squared = result
                 # 判断 target_keyword 过滤
@@ -111,4 +148,3 @@ def save_diffusion_results(results, output_file, append=False, config_data=None)
             writer.writerow([temperature, f"{D:.6e}", f"{r_squared:.4f}"])  # 确保数据格式正确
             logging.info(f"{temperature}已经成功写入")
     logging.info(f"扩散系数已保存至: {output_file}")
-
