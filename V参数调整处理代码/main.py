@@ -110,6 +110,14 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs):
             data_color, _ = generate_contrast_color(base_color)
             
             plt.figure(figsize=(10, 6))
+
+            # 设置全局字体
+            plt.rcParams.update({
+                'font.family': 'serif',
+                'font.serif': ['Times New Roman'],
+                'mathtext.fontset': 'stix'  # 数学符号风格
+            })
+
             plt.plot(data, color=data_color, alpha=0.6)
             plt.title(f"Pressure Data - {folder_name}")
             plt.xlabel("Data Index")
@@ -174,6 +182,14 @@ def analyze_averages(averages, colors, expected_pressure, output_dir):
     
     # 绘图设置
     plt.figure(figsize=(12, 7))
+
+    # 设置全局字体
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.serif': ['Times New Roman'],
+        'mathtext.fontset': 'stix'  # 数学符号风格
+    })
+
     ax = plt.gca()
     base_color = colors[0]
     data_color, fit_color = generate_contrast_color(base_color)
@@ -229,7 +245,7 @@ def analyze_averages(averages, colors, expected_pressure, output_dir):
     ax.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5)
     
     # 图例美化
-    legend = ax.legend(loc='best', frameon=True, framealpha=0.95,
+    legend = ax.legend(loc='best', frameon=True, framealpha=0,
                       edgecolor='#2c3e50', fontsize=10)
     legend.get_frame().set_facecolor('#f8f9fa')
     
