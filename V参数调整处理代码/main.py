@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import itertools
 import colorsys
 import matplotlib.colors as mcolors
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 import config
 import logging
 from logging.handlers import RotatingFileHandler
@@ -35,7 +35,7 @@ def generate_contrast_color(base_hex, light=0.3, dark=0.7):
     return (mcolors.to_hex(data_color), mcolors.to_hex(fit_color))
 
 # 数据读取和处理函数
-def process_data_files(root_dir, colors, output_dir):
+def process_data_files(root_dir, colors, output_dir, ignore_dirs):
     """处理所有文件夹中的数据文件"""
     averages = {}
     color_cycle = itertools.cycle(colors)
@@ -56,6 +56,16 @@ def process_data_files(root_dir, colors, output_dir):
     logging.info(f"开始处理 {len(folders)} 个文件夹...")
     
     for folder_name in sorted(folders):
+        # 忽略指定前缀的文件夹
+        prefix = folder_name.split("-")[0]
+        if prefix in ignore_dirs:
+            logging.info(f"忽略文件夹 '{folder_name}'（配置排除）")
+            continue
+        
+        # 忽略output文件夹
+        if folder_name == "output":
+            continue
+            
         folder_path = os.path.join(root_dir, folder_name)
         data_file = os.path.join(folder_path, "total-pressure.dat")
         
@@ -93,7 +103,7 @@ def process_data_files(root_dir, colors, output_dir):
                 continue
                 
             avg = np.mean(data)
-            averages[folder_name] = avg
+            averages[param_part] = avg
             
             # 绘制时序图
             base_color = next(color_cycle)
@@ -104,9 +114,14 @@ def process_data_files(root_dir, colors, output_dir):
             plt.title(f"Pressure Data - {folder_name}")
             plt.xlabel("Data Index")
             plt.ylabel("Pressure")
-            plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+
+            # 添加刻度线设置和范围设置
+            ax = plt.gca()
+            ax.xaxis.set_major_locator(MaxNLocator(5, integer=True))
+            ax.tick_params(direction='in', which='both', top=False, right=False)
+            plt.xlim(0, len(data)-1)  # 根据数据长度设置x轴范围
+
             
-            # 修改保存路径到output目录
             plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.png")
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
             plt.close()
@@ -155,6 +170,7 @@ def analyze_averages(averages, colors, expected_pressure, output_dir):
     # 线性拟合
     coeffs = np.polyfit(x, y, 1)
     fit_fn = np.poly1d(coeffs)
+    target_param = (expected_pressure - coeffs[1]) / coeffs[0]
     
     # 绘图设置
     plt.figure(figsize=(12, 7))
@@ -162,25 +178,63 @@ def analyze_averages(averages, colors, expected_pressure, output_dir):
     base_color = colors[0]
     data_color, fit_color = generate_contrast_color(base_color)
     
-    # 绘制图形
-    ax.scatter(x, y, color=data_color, s=60, label="Average Values")
-    ax.plot(x, fit_fn(x), '--', color=fit_color, 
-           label=f"Fit: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
+    # 刻度设置
+    ax.tick_params(direction='in', which='both', top=False, right=False)
+    ax.xaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
+    ax.yaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
     
-    # 计算预测参数
-    target_param = (expected_pressure - coeffs[1]) / coeffs[0]
-    ax.axhline(expected_pressure, color='gray', linestyle=':', 
+    # 绘制散点图
+    ax.scatter(x, y, color=data_color, s=80, edgecolor='w', linewidth=1, zorder=3, label="Average Values")
+
+    # 1) 计算出实际数据范围 + 目标参数
+    x_data_min = x.min()
+    x_data_max = x.max()
+    x_min = min(x_data_min, target_param)
+    x_max = max(x_data_max, target_param)
+
+    # 2) 给一点边距（如 5%）
+    margin = (x_max - x_min) * 0.05
+    x_min_plot = x_min - margin
+    x_max_plot = x_max + margin
+
+    # 3) 在 [x_min_plot, x_max_plot] 之间生成更多点来画拟合曲线
+    x_fit = np.linspace(x_min_plot, x_max_plot, 500)
+    y_fit = fit_fn(x_fit)
+    # 生成平滑拟合曲线
+    y_fit = fit_fn(x_fit)
+    ax.plot(x_fit, y_fit, '--', 
+            color=fit_color,
+            linewidth=2.5,
+            alpha=0.8,
+            zorder=2,
+            label=f"Fit: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
+
+    # 目标线设置
+    ax.axhline(expected_pressure, color='#2c3e50', linestyle='-.', 
+              linewidth=1.5, alpha=0.7, zorder=1,
               label=f'Target Pressure: {expected_pressure}')
-    ax.axvline(target_param, color='gray', linestyle=':', 
+    ax.axvline(target_param, color='#2c3e50', linestyle='-.',
+              linewidth=1.5, alpha=0.7, zorder=1,
               label=f'Predicted Parameter: {target_param:.4f}')
+
+    # 坐标轴设置
+    ax.set_xlabel("Parameter Value", fontsize=13, labelpad=8)
+    ax.set_ylabel("Average Pressure", fontsize=13, labelpad=8)
     
-    # 图形美化
-    ax.set_xlabel("Parameter Value", fontsize=12)
-    ax.set_ylabel("Average Pressure", fontsize=12)
-    ax.legend(loc='best', frameon=False)
-    ax.xaxis.set_major_locator(MaxNLocator(5))
-    ax.yaxis.set_major_locator(MaxNLocator(7))
-    plt.grid(alpha=0.2)
+    # 刻度优化
+    ax.xaxis.set_major_locator(MaxNLocator(prune=None, steps=[1, 2, 5], nbins=8))
+    ax.yaxis.set_major_locator(MaxNLocator(prune=None, steps=[1, 2, 5], nbins=8))
+    
+    # 网格线设置
+    ax.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5)
+    
+    # 图例美化
+    legend = ax.legend(loc='best', frameon=True, framealpha=0.95,
+                      edgecolor='#2c3e50', fontsize=10)
+    legend.get_frame().set_facecolor('#f8f9fa')
+    
+    # 自动调整范围
+    ax.set_xlim(left=x_fit[0], right=x_fit[-1])
     
     # 修改保存路径到output目录
     analysis_path = os.path.join(output_dir, "average_pressure_analysis.png")
@@ -196,19 +250,25 @@ def main():
     logging.info("===== 压力数据分析程序启动 =====")
     
     try:
-        # 创建输出目录
-        output_dir = os.path.abspath("output")
-        os.makedirs(output_dir, exist_ok=True)
-        logging.info(f"输出目录已创建：{output_dir}")
-        
         # 加载配置
         cfg = config.config_data
         logging.info(f"配置文件加载成功\n"
                     f"数据路径: {cfg['data_path']}\n"
+                    f"排除前缀: {cfg.get('ignore_dirs', [])}\n"
                     f"预期压力: {cfg['expected_pressure']}")
         
+        # 创建输出目录（在600K目录下）
+        output_dir = os.path.join(cfg["data_path"], "output")
+        os.makedirs(output_dir, exist_ok=True)
+        logging.info(f"输出目录已创建：{output_dir}")
+        
         # 处理数据文件
-        averages = process_data_files(cfg["data_path"], cfg["colors"], output_dir)
+        averages = process_data_files(
+            cfg["data_path"], 
+            cfg["colors"], 
+            output_dir,
+            cfg.get("ignore_dirs", [])
+        )
         logging.info(f"成功处理 {len(averages)} 个有效数据文件")
         
         # 保存结果到output目录
