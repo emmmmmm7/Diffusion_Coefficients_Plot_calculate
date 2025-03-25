@@ -6,6 +6,9 @@ config_data = {
     
     # 需要忽略的前缀列表（根据文件夹名的第一部分）
     "ignore_dirs": ["4"],  
+
+    # 新增：验证数据集前缀
+    "verify_dirs": ["5"],  
     
     # 颜色配置
     "colors": ["#1f77b4",
@@ -21,5 +24,5 @@ config_data = {
         ], 
     
     # 目标压力值
-    "expected_pressure": 5
+    "expected_pressure": 0.5
 }

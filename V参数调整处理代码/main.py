@@ -35,9 +35,10 @@ def generate_contrast_color(base_hex, light=0.3, dark=0.7):
     return (mcolors.to_hex(data_color), mcolors.to_hex(fit_color))
 
 # 数据读取和处理函数
-def process_data_files(root_dir, colors, output_dir, ignore_dirs):
-    """处理所有文件夹中的数据文件"""
+def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs):
+    """处理数据并区分验证集"""
     averages = {}
+    verify_averages = {}  # 新增：存储验证数据
     color_cycle = itertools.cycle(colors)
     
     # 创建输出子目录
@@ -58,10 +59,15 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs):
     for folder_name in sorted(folders):
         # 忽略指定前缀的文件夹
         prefix = folder_name.split("-")[0]
+
+        # 处理忽略目录
         if prefix in ignore_dirs:
             logging.info(f"忽略文件夹 '{folder_name}'（配置排除）")
             continue
         
+        # 标记验证目录
+        is_verify = prefix in verify_dirs
+
         # 忽略output文件夹
         if folder_name == "output":
             continue
@@ -103,7 +109,12 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs):
                 continue
                 
             avg = np.mean(data)
-            averages[param_part] = avg
+
+            # 存储数据时区分验证集
+            if is_verify:
+                verify_averages[param_part] = avg
+            else:
+                averages[param_part] = avg
             
             # 绘制时序图
             base_color = next(color_cycle)
@@ -138,29 +149,28 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs):
         except Exception as e:
             logging.error(f"处理文件夹 {folder_name} 时出错：{str(e)}", exc_info=True)
     
-    return averages
+    return averages, verify_averages
 
 # 平均值分析和拟合函数
-def analyze_averages(averages, colors, expected_pressure, output_dir):
-    """分析平均值并进行曲线拟合"""
-    # 数据验证
-    if not averages:
-        raise ValueError("未找到有效的平均值数据")
+def analyze_averages(averages, verify_averages, colors, verify_color, expected_pressure, output_dir):
+    """分析数据并区分验证集"""
+    # 合并数据显示但分开处理
+    all_data = {**averages, **verify_averages}
     
     logging.info("\n有效参数-平均值数据：")
-    for k, v in averages.items():
-        logging.info(f"参数: {k.ljust(10)} → 平均值: {v:.4f}")
-    
-    # 参数转换
+    for k in sorted(all_data.keys(), key=float):
+        source = "(验证集)" if k in verify_averages else ""
+        logging.info(f"参数: {k.ljust(10)} → 平均值: {all_data[k]:.4f} {source}")
+
+    # 参数转换（仅使用非验证数据）
     params = []
     valid_keys = []
     for key in averages.keys():
         try:
-            param = float(key.split("-")[-1])  # 提取参数值
-            params.append(param)
+            params.append(float(key))
             valid_keys.append(key)
         except ValueError:
-            logging.warning(f"跳过无效参数文件夹 '{key}'")
+            logging.warning(f"跳过无效参数 '{key}'")
             continue
     
     if not params:
@@ -201,6 +211,13 @@ def analyze_averages(averages, colors, expected_pressure, output_dir):
     
     # 绘制散点图
     ax.scatter(x, y, color=data_color, s=80, edgecolor='w', linewidth=1, zorder=3, label="Average Values")
+
+    # 绘制验证数据
+    if verify_averages:
+        verify_params = [float(k) for k in verify_averages.keys()]
+        verify_values = [verify_averages[k] for k in verify_averages.keys()]
+        ax.scatter(verify_params, verify_values, color=verify_color, s=80, 
+                  edgecolor='w', marker='s', zorder=4, label="Validation Data")
 
     # 1) 计算出实际数据范围 + 目标参数
     x_data_min = x.min()
@@ -279,28 +296,39 @@ def main():
         logging.info(f"输出目录已创建：{output_dir}")
         
         # 处理数据文件
-        averages = process_data_files(
-            cfg["data_path"], 
-            cfg["colors"], 
-            output_dir,
-            cfg.get("ignore_dirs", [])
-        )
+        averages, verify_averages = process_data_files(
+                                            cfg["data_path"], 
+                                            cfg["colors"], 
+                                            output_dir,
+                                            cfg.get("ignore_dirs", []),
+                                            cfg.get("verify_dirs", [])
+                                        )
         logging.info(f"成功处理 {len(averages)} 个有效数据文件")
         
-        # 保存结果到output目录
+        # 保存结果到output目录（修改后）
         result_path = os.path.join(output_dir, "average_pressures.txt")
         with open(result_path, "w") as f:
-            for param in sorted(averages.keys(), key=lambda x: float(x.split("-")[-1])):
-                f.write(f"{param}\t{averages[param]:.4f}\n")
-        logging.info(f"平均值结果已保存到：{result_path}")
+            # 合并数据并排序
+            all_data = {**averages, **verify_averages}
+            sorted_params = sorted(all_data.keys(), key=lambda x: float(x))
+            
+            for param in sorted_params:
+                # 判断是否为验证数据
+                is_verify = param in verify_averages
+                note = "(验证集)" if is_verify else ""
+                f.write(f"{param}\t{all_data[param]:.4f}\t{note}\n")
+        
+        logging.info(f"平均值结果已保存到：{result_path}（含验证数据标注）")
         
         # 分析数据
         coeffs, target_param = analyze_averages(
-            averages, 
-            cfg["colors"], 
-            cfg["expected_pressure"],
-            output_dir
-        )
+                                            averages, 
+                                            verify_averages,
+                                            cfg["colors"], 
+                                            cfg.get("verify_color", "#d62728"),
+                                            cfg["expected_pressure"],
+                                            output_dir
+                                        )
         
         # 输出结果
         logging.info("\n===== 最终分析结果 =====")
