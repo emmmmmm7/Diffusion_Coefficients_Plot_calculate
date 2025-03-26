@@ -24,5 +24,9 @@ config_data = {
         ], 
     
     # 目标压力值
-    "expected_pressure": 0.5
+    "expected_pressure": 0.5,
+
+    # 新增时间截取参数
+    "start_time_ps": 2,  
+    "end_time_ps": 5
 }

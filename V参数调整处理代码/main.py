@@ -35,7 +35,7 @@ def generate_contrast_color(base_hex, light=0.3, dark=0.7):
     return (mcolors.to_hex(data_color), mcolors.to_hex(fit_color))
 
 # 数据读取和处理函数
-def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs):
+def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, start_ps, end_ps):
     """处理数据并区分验证集"""
     averages = {}
     verify_averages = {}  # 新增：存储验证数据
@@ -102,14 +102,30 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs):
         data_file = os.path.join(result_dir, found_file)
             
         try:
-            # 读取数据
-            data = np.loadtxt(data_file)
-            if data.size == 0:
-                logging.warning(f"跳过文件夹 {folder_name}：数据文件为空")
+            # 读取单列压力数据
+            pressure = np.loadtxt(data_file)
+            n_points = len(pressure)
+            
+            # 生成时间序列（假设每个数据点间隔1fs）
+            time_fs = np.arange(n_points)  # 0, 1, 2,... fs
+            time_ps = time_fs / 1000  # 转换为ps
+            
+            # 应用时间截取
+            start_fs = int(start_ps * 1000)
+            end_fs = int(end_ps * 1000)
+            start_idx = max(0, start_fs)
+            end_idx = min(n_points-1, end_fs)
+            
+            # 截取数据段
+            pressure = pressure[start_idx:end_idx+1]
+            time_ps = time_ps[start_idx:end_idx+1]
+            
+            if len(pressure) == 0:
+                logging.warning(f"跳过文件夹 {folder_name}：时间范围内无数据")
                 continue
                 
-            avg = np.mean(data)
-
+            avg = np.mean(pressure)
+            
             # 存储数据时区分验证集
             if is_verify:
                 verify_averages[param_part] = avg
@@ -129,16 +145,17 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs):
                 'mathtext.fontset': 'stix'  # 数学符号风格
             })
 
-            plt.plot(data, color=data_color, alpha=0.6)
-            plt.title(f"Pressure Data - {folder_name}")
-            plt.xlabel("Data Index")
+            plt.plot(pressure, color=data_color, alpha=0.6)
+            plt.title(f"Pressure Data - {folder_name.split('-')[-1]}")
+            plt.xlabel("Time (ps)")
             plt.ylabel("Pressure")
+            plt.xlim(start_ps, end_ps)  # 设置精确范围
 
             # 添加刻度线设置和范围设置
             ax = plt.gca()
             ax.xaxis.set_major_locator(MaxNLocator(5, integer=True))
             ax.tick_params(direction='in', which='both', top=False, right=False)
-            plt.xlim(0, len(data)-1)  # 根据数据长度设置x轴范围
+            plt.xlim(0, len(pressure)-1)  # 根据数据长度设置x轴范围
 
             
             plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.png")
@@ -240,7 +257,8 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
             linewidth=2.5,
             alpha=0.8,
             zorder=2,
-            label=f"Fit: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
+            label = f"Fit: " + r'$\mathregular{y = %.5fx %+0.4f}$' % (coeffs[0], coeffs[1])
+)
 
     # 目标线设置
     ax.axhline(expected_pressure, color='#2c3e50', linestyle='-.', 
@@ -248,7 +266,7 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
               label=f'Target Pressure: {expected_pressure}')
     ax.axvline(target_param, color='#2c3e50', linestyle='-.',
               linewidth=1.5, alpha=0.7, zorder=1,
-              label=f'Predicted Parameter: {target_param:.4f}')
+              label=f'Predicted Parameter: {target_param:.8f}')
 
     # 坐标轴设置
     ax.set_xlabel("Parameter Value", fontsize=13, labelpad=8)
@@ -295,14 +313,20 @@ def main():
         os.makedirs(output_dir, exist_ok=True)
         logging.info(f"输出目录已创建：{output_dir}")
         
-        # 处理数据文件
+        # 获取时间参数（带默认值）
+        start_ps = cfg.get("start_time_ps", 0)
+        end_ps = cfg.get("end_time_ps", 100)
+        
+        # 处理数据文件时传入时间参数
         averages, verify_averages = process_data_files(
-                                            cfg["data_path"], 
-                                            cfg["colors"], 
-                                            output_dir,
-                                            cfg.get("ignore_dirs", []),
-                                            cfg.get("verify_dirs", [])
-                                        )
+            cfg["data_path"], 
+            cfg["colors"], 
+            output_dir,
+            cfg.get("ignore_dirs", []),
+            cfg.get("verify_dirs", []),
+            start_ps,
+            end_ps
+        )
         logging.info(f"成功处理 {len(averages)} 个有效数据文件")
         
         # 保存结果到output目录（修改后）
