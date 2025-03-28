@@ -147,9 +147,9 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
 
             plt.plot(pressure, color=data_color, alpha=0.6)
             plt.title(f"Pressure Data - {folder_name.split('-')[-1]}")
-            plt.xlabel("Time (ps)")
+            plt.xlabel("Time (fs)")
             plt.ylabel("Pressure")
-            plt.xlim(start_ps, end_ps)  # 设置精确范围
+            # plt.xlim(start_ps, end_ps)  # 设置精确范围
 
             # 添加刻度线设置和范围设置
             ax = plt.gca()
