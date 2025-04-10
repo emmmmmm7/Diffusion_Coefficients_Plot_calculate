@@ -35,7 +35,7 @@ def generate_contrast_color(base_hex, light=0.3, dark=0.7):
     return (mcolors.to_hex(data_color), mcolors.to_hex(fit_color))
 
 # 数据读取和处理函数
-def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, start_ps, end_ps):
+def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, start_ps, end_ps, plot_model):
     """处理数据并区分验证集"""
     averages = {}
     verify_averages = {}  # 新增：存储验证数据
@@ -73,7 +73,20 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
             continue
             
         folder_path = os.path.join(root_dir, folder_name)
-        data_file = os.path.join(folder_path, "total-pressure.dat")
+
+        # 根据绘图模式选择数据文件
+        if plot_model == 1:
+            data_file_name = "total-pressure.dat"
+            data_columns = (None, 0)  # 单列数据
+            y_label = "Pressure"
+        elif plot_model == 2:
+            data_file_name = "T-E.dat"
+            data_columns = (0, 1)     # 时间列和温度列
+            y_label = "Temperature (K)"
+        else:
+            raise ValueError(f"无效的绘图模式: {plot_model}")
+        
+        data_file = os.path.join(folder_path, "results", data_file_name)
         
         # 文件夹名解析验证
         try:
@@ -83,32 +96,44 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
             logging.warning(f"跳过文件夹 '{folder_name}'：命名不符合规范")
             continue
 
-        # 查找数据文件
-        result_dir = os.path.join(folder_path, "results")
-        if not os.path.exists(result_dir):
-            logging.warning(f"跳过文件夹 {folder_name}：未找到 results 文件夹")
+        if not os.path.exists(data_file):
+            logging.warning(f"跳过文件夹 {folder_name}：未找到 {data_file_name}")
             continue
 
-        found_file = None
-        for f in os.listdir(result_dir):
-            if f.lower() == "total-pressure.dat":
-                found_file = f
-                break
+        # # 查找数据文件
+        # result_dir = os.path.join(folder_path, "results")
+        # if not os.path.exists(result_dir):
+        #     logging.warning(f"跳过文件夹 {folder_name}：未找到 results 文件夹")
+        #     continue
 
-        if not found_file:
-            logging.warning(f"跳过文件夹 {folder_name}：未找到 total-pressure.dat")
-            continue
+        # found_file = None
+        # for f in os.listdir(result_dir):
+        #     if f.lower() == "total-pressure.dat":
+        #         found_file = f
+        #         break
 
-        data_file = os.path.join(result_dir, found_file)
+        # if not found_file:
+        #     logging.warning(f"跳过文件夹 {folder_name}：未找到 total-pressure.dat")
+        #     continue
+
+        # data_file = os.path.join(result_dir, found_file)
             
         try:
-            # 读取单列压力数据
-            pressure = np.loadtxt(data_file)
-            n_points = len(pressure)
-            
-            # 生成时间序列（假设每个数据点间隔1fs）
-            time_fs = np.arange(n_points)  # 0, 1, 2,... fs
-            time_ps = time_fs / 1000  # 转换为ps
+            # 通用数据加载逻辑
+            if plot_model == 1:
+                # 模式1：单列压力数据
+                data = np.loadtxt(data_file)
+                n_points = len(data)
+                time_fs = np.arange(n_points)
+            elif plot_model == 2:
+                # 模式2：多列数据，提取指定列
+                full_data = np.loadtxt(data_file)
+                time_fs = full_data[:, data_columns[0]].astype(float)
+                data = full_data[:, data_columns[1]].astype(float)
+                n_points = len(data)
+
+            # 通用时间处理
+            time_ps = time_fs / 1000  # 统一转换为ps
             
             # 应用时间截取
             start_fs = int(start_ps * 1000)
@@ -116,48 +141,41 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
             start_idx = max(0, start_fs)
             end_idx = min(n_points-1, end_fs)
             
-            # 截取数据段
-            pressure = pressure[start_idx:end_idx+1]
+            data = data[start_idx:end_idx+1]
             time_ps = time_ps[start_idx:end_idx+1]
             
-            if len(pressure) == 0:
+            if len(data) == 0:
                 logging.warning(f"跳过文件夹 {folder_name}：时间范围内无数据")
                 continue
                 
-            avg = np.mean(pressure)
+            avg = np.mean(data)
             
-            # 存储数据时区分验证集
-            if is_verify:
-                verify_averages[param_part] = avg
-            else:
-                averages[param_part] = avg
+            # 存储数据
+            target_dict = verify_averages if is_verify else averages
+            target_dict[param_part] = avg
             
-            # 绘制时序图
+            # 绘图部分
             base_color = next(color_cycle)
             data_color, _ = generate_contrast_color(base_color)
             
             plt.figure(figsize=(10, 6))
-
-            # 设置全局字体
             plt.rcParams.update({
                 'font.family': 'serif',
                 'font.serif': ['Times New Roman'],
-                'mathtext.fontset': 'stix'  # 数学符号风格
+                'mathtext.fontset': 'stix'
             })
 
-            plt.plot(pressure, color=data_color, alpha=0.6)
-            plt.title(f"Pressure Data - {folder_name.split('-')[-1]}")
-            plt.xlabel("Time (fs)")
-            plt.ylabel("Pressure")
-            # plt.xlim(start_ps, end_ps)  # 设置精确范围
-
-            # 添加刻度线设置和范围设置
-            ax = plt.gca()
-            ax.xaxis.set_major_locator(MaxNLocator(5, integer=True))
-            ax.tick_params(direction='in', which='both', top=False, right=False)
-            plt.xlim(0, len(pressure)-1)  # 根据数据长度设置x轴范围
-
+            plt.plot(time_ps, data, color=data_color, alpha=0.6)
+            plt.title(f"{y_label.split(' ')[0]} Data - {param_part}")
+            plt.xlabel("Time (ps)")
+            plt.ylabel(y_label)
             
+            ax = plt.gca()
+            ax.xaxis.set_major_locator(MaxNLocator(5))
+            ax.xaxis.set_major_formatter(ScalarFormatter(useOffset=False))
+            ax.tick_params(direction='in', which='both', top=False, right=False)
+            plt.xlim(start_ps, end_ps)
+
             plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.png")
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
             plt.close()
@@ -325,7 +343,8 @@ def main():
             cfg.get("ignore_dirs", []),
             cfg.get("verify_dirs", []),
             start_ps,
-            end_ps
+            end_ps,
+            cfg.get("plot_model", 1)
         )
         logging.info(f"成功处理 {len(averages)} 个有效数据文件")
         

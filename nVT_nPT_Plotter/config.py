@@ -2,7 +2,7 @@ import os
 
 config_data = {
     # 生成目录的绝对路径
-    "data_path": os.path.expanduser("/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/Ti_qudai_File/2-2023.03.21-V/800K"),  
+    "data_path": os.path.expanduser("/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/Ti_qudai_File/nPT方案/1-test-700K-2025.03.28"),  
     
     # 需要忽略的前缀列表（根据文件夹名的第一部分）
     "ignore_dirs": [],  
@@ -28,5 +28,8 @@ config_data = {
 
     # 新增时间截取参数
     "start_time_ps": 0,  
-    "end_time_ps": 5
+    "end_time_ps": 3,
+
+    # 新增绘图模式：1、nVT方案中用于求解体积参数；2、nPT方案中绘制温度图片
+    "plot_model": 2
 }
