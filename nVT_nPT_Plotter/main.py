@@ -35,7 +35,7 @@ def generate_contrast_color(base_hex, light=0.3, dark=0.7):
     return (mcolors.to_hex(data_color), mcolors.to_hex(fit_color))
 
 # 数据读取和处理函数
-def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, start_ps, end_ps, plot_model):
+def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, start_ps, end_ps, plot_model, all_time):
     """处理数据并区分验证集"""
     averages = {}
     verify_averages = {}  # 新增：存储验证数据
@@ -125,12 +125,47 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
                 data = np.loadtxt(data_file)
                 n_points = len(data)
                 time_fs = np.arange(n_points)
+                time_ps = time_fs / 1000  # 确保time_ps在此定义
             elif plot_model == 2:
                 # 模式2：多列数据，提取指定列
                 full_data = np.loadtxt(data_file)
                 time_fs = full_data[:, data_columns[0]].astype(float)
                 data = full_data[:, data_columns[1]].astype(float)
                 n_points = len(data)
+                time_ps = time_fs / 1000  # 确保time_ps在此定义
+            else:
+                raise ValueError(f"无效的绘图模式: {plot_model}")
+            
+            # 添加安全校验
+            if 'time_ps' not in locals():
+                raise ValueError("时间序列生成失败，请检查数据文件格式")
+
+
+            # 时间截取逻辑修改
+            if all_time == 1:
+                start_idx = 0
+                end_idx = n_points - 1
+                used_start_ps = 0.0
+                used_end_ps = time_ps[-1]
+            else:
+                start_fs = int(start_ps * 1000)
+                end_fs = int(end_ps * 1000)
+                start_idx = max(0, start_fs)
+                end_idx = min(n_points-1, end_fs)
+                used_start_ps = start_ps
+                used_end_ps = end_ps
+
+             # 截取数据段
+            data = data[start_idx:end_idx+1]
+            time_ps = time_ps[start_idx:end_idx+1]
+            
+            # 添加调试日志
+            logging.debug(
+                f"时间范围 - {folder_name}: "
+                f"配置all_time={all_time} "
+                f"实际使用范围=[{used_start_ps:.2f}ps, {used_end_ps:.2f}ps] "
+                f"数据点数={len(data)}"
+            )
 
             # 通用时间处理
             time_ps = time_fs / 1000  # 统一转换为ps
@@ -174,7 +209,7 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
             ax.xaxis.set_major_locator(MaxNLocator(5))
             ax.xaxis.set_major_formatter(ScalarFormatter(useOffset=False))
             ax.tick_params(direction='in', which='both', top=False, right=False)
-            plt.xlim(start_ps, end_ps)
+            plt.xlim(used_start_ps, used_end_ps)
 
             plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.png")
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
@@ -187,8 +222,14 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
     return averages, verify_averages
 
 # 平均值分析和拟合函数
-def analyze_averages(averages, verify_averages, colors, verify_color, expected_pressure, output_dir):
+def analyze_averages(averages, verify_averages, colors, verify_color, expected_pressure, output_dir, analyse_model):
     """分析数据并区分验证集"""
+
+    """根据分析模式执行不同操作"""
+    if analyse_model == 0:
+        logging.info("分析模式0: 跳过所有分析")
+        return None, None
+    
     # 合并数据显示但分开处理
     all_data = {**averages, **verify_averages}
     
@@ -196,6 +237,10 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
     for k in sorted(all_data.keys(), key=float):
         source = "(验证集)" if k in verify_averages else ""
         logging.info(f"参数: {k.ljust(10)} → 平均值: {all_data[k]:.4f} {source}")
+
+    if analyse_model == 1:
+        logging.info("分析模式1: 仅输出平均值")
+        return None, None
 
     # 参数转换（仅使用非验证数据）
     params = []
@@ -321,6 +366,13 @@ def main():
     try:
         # 加载配置
         cfg = config.config_data
+
+        # 参数验证
+        if cfg.get("analyse_model", 2) not in (0,1,2):
+            raise ValueError("analyse_model参数必须为0、1或2")
+        if cfg.get("all_time", 0) not in (0,1):
+            raise ValueError("all_time参数必须为0或1")
+        
         logging.info(f"配置文件加载成功\n"
                     f"数据路径: {cfg['data_path']}\n"
                     f"排除前缀: {cfg.get('ignore_dirs', [])}\n"
@@ -335,16 +387,17 @@ def main():
         start_ps = cfg.get("start_time_ps", 0)
         end_ps = cfg.get("end_time_ps", 100)
         
-        # 处理数据文件时传入时间参数
+        # 处理数据文件时传入新参数
         averages, verify_averages = process_data_files(
             cfg["data_path"], 
             cfg["colors"], 
             output_dir,
             cfg.get("ignore_dirs", []),
             cfg.get("verify_dirs", []),
-            start_ps,
-            end_ps,
-            cfg.get("plot_model", 1)
+            cfg.get("start_time_ps", 0),
+            cfg.get("end_time_ps", 100),
+            cfg.get("plot_model", 1),
+            cfg.get("all_time", 0)
         )
         logging.info(f"成功处理 {len(averages)} 个有效数据文件")
         
@@ -363,21 +416,35 @@ def main():
         
         logging.info(f"平均值结果已保存到：{result_path}（含验证数据标注）")
         
-        # 分析数据
-        coeffs, target_param = analyze_averages(
-                                            averages, 
-                                            verify_averages,
-                                            cfg["colors"], 
-                                            cfg.get("verify_color", "#d62728"),
-                                            cfg["expected_pressure"],
-                                            output_dir
-                                        )
+         # 分析模式控制
+        analyse_mode = cfg.get("analyse_model", 2)
+        if analyse_mode == 0:
+            logging.info("分析模式0: 跳过所有分析步骤")
+        else:
+            coeffs, target_param = analyze_averages(
+                averages, 
+                verify_averages,
+                cfg["colors"], 
+                cfg.get("verify_color", "#d62728"),
+                cfg["expected_pressure"],
+                output_dir,
+                analyse_mode
+            )
+
+            # 根据模式输出结果
+            if analyse_mode == 2:
+                logging.info("===== 最终分析结果 =====")
+                logging.info(f"线性拟合方程: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
+                logging.info(f"目标压力值: {cfg['expected_pressure']}")
+                logging.info(f"预测参数值: {target_param:.4f}")
+            elif analyse_mode == 1:
+                logging.info("===== 基础分析完成 =====")
         
-        # 输出结果
-        logging.info("\n===== 最终分析结果 =====")
-        logging.info(f"线性拟合方程: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
-        logging.info(f"目标压力值: {cfg['expected_pressure']}")
-        logging.info(f"预测参数值: {target_param:.4f}")
+        # # 输出结果
+        # logging.info("\n===== 最终分析结果 =====")
+        # logging.info(f"线性拟合方程: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
+        # logging.info(f"目标压力值: {cfg['expected_pressure']}")
+        # logging.info(f"预测参数值: {target_param:.4f}")
         
     except Exception as e:
         logging.error("\n!!!!! 程序执行出错 !!!!!", exc_info=True)

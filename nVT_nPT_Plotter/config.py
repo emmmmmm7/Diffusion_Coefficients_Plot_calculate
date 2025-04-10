@@ -26,10 +26,18 @@ config_data = {
     # 目标压力值
     "expected_pressure": 0.5,
 
+    
+    # 新增：是否绘制所有时间点的图像
+    # 0: 不忽略时间截取参数； 1: 忽略时间截取参数
+     "all_time": 1,
+
     # 新增时间截取参数
     "start_time_ps": 0,  
     "end_time_ps": 3,
 
     # 新增绘图模式：1、nVT方案中用于求解体积参数；2、nPT方案中绘制温度图片
-    "plot_model": 2
+    "plot_model": 2,
+
+    # 新增：分析模式选择，0：不分析；1：仅平均值分析；2：平均值分析+拟合+对应目标值
+    "analyse_model": 1,
 }
