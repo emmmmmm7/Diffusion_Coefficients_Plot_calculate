@@ -99,24 +99,6 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
         if not os.path.exists(data_file):
             logging.warning(f"跳过文件夹 {folder_name}：未找到 {data_file_name}")
             continue
-
-        # # 查找数据文件
-        # result_dir = os.path.join(folder_path, "results")
-        # if not os.path.exists(result_dir):
-        #     logging.warning(f"跳过文件夹 {folder_name}：未找到 results 文件夹")
-        #     continue
-
-        # found_file = None
-        # for f in os.listdir(result_dir):
-        #     if f.lower() == "total-pressure.dat":
-        #         found_file = f
-        #         break
-
-        # if not found_file:
-        #     logging.warning(f"跳过文件夹 {folder_name}：未找到 total-pressure.dat")
-        #     continue
-
-        # data_file = os.path.join(result_dir, found_file)
             
         try:
             # 通用数据加载逻辑
@@ -128,11 +110,40 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
                 time_ps = time_fs / 1000  # 确保time_ps在此定义
             elif plot_model == 2:
                 # 模式2：多列数据，提取指定列
-                full_data = np.loadtxt(data_file)
-                time_fs = full_data[:, data_columns[0]].astype(float)
-                data = full_data[:, data_columns[1]].astype(float)
-                n_points = len(data)
-                time_ps = time_fs / 1000  # 确保time_ps在此定义
+                try:
+                    # 使用更稳健的genfromtxt加载数据
+                    full_data = np.genfromtxt(data_file, invalid_raise=False)
+                    
+                    # 检测并处理包含NaN的行
+                    nan_mask = np.isnan(full_data).any(axis=1)
+                    if np.any(nan_mask):
+                        nan_count = np.sum(nan_mask)
+                        valid_data = full_data[~nan_mask]
+                        logging.warning(
+                            f"在文件夹 {folder_name} 中发现 {nan_count} 行包含NaN值 "
+                            f"(总行数：{len(full_data)})，已自动过滤"
+                        )
+                        
+                        # 如果过滤后无有效数据则跳过
+                        if len(valid_data) == 0:
+                            logging.warning(f"文件夹 {folder_name} 的 {data_file_name} 无有效数据")
+                            continue
+                            
+                        full_data = valid_data
+                        
+                    # 提取时间和温度数据
+                    time_fs = full_data[:, data_columns[0]].astype(float)
+                    data = full_data[:, data_columns[1]].astype(float)
+                    
+                    # 时间归零处理（从第一个有效数据点开始）
+                    time_fs -= time_fs[0]  # 使时间从0开始
+                    
+                    n_points = len(data)
+                    time_ps = time_fs / 1000  # 转换为ps
+                    
+                except Exception as e:
+                    logging.error(f"加载 {data_file_name} 失败：{str(e)}")
+                    continue
             else:
                 raise ValueError(f"无效的绘图模式: {plot_model}")
             
@@ -148,17 +159,22 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
                 used_start_ps = 0.0
                 used_end_ps = time_ps[-1]
             else:
-                start_fs = int(start_ps * 1000)
-                end_fs = int(end_ps * 1000)
-                start_idx = max(0, start_fs)
-                end_idx = min(n_points-1, end_fs)
+                # 精确查找索引（避免fs转换误差）
+                start_idx = np.searchsorted(time_ps, start_ps, side='left')
+                end_idx = np.searchsorted(time_ps, end_ps, side='right') - 1
+                end_idx = min(end_idx, n_points-1)  # 安全保护
                 used_start_ps = start_ps
                 used_end_ps = end_ps
 
              # 截取数据段
             data = data[start_idx:end_idx+1]
             time_ps = time_ps[start_idx:end_idx+1]
-            
+
+            # 新增：确保时间序列连续（处理可能的索引错误）
+            if len(time_ps) == 0:
+                logging.warning(f"跳过文件夹 {folder_name}：时间范围内无数据")
+                continue
+                        
             # 添加调试日志
             logging.debug(
                 f"时间范围 - {folder_name}: "
@@ -209,7 +225,7 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
             ax.xaxis.set_major_locator(MaxNLocator(5))
             ax.xaxis.set_major_formatter(ScalarFormatter(useOffset=False))
             ax.tick_params(direction='in', which='both', top=False, right=False)
-            plt.xlim(used_start_ps, used_end_ps)
+            plt.xlim(time_ps[0], time_ps[-1])
 
             plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.png")
             plt.savefig(plot_path, dpi=300, bbox_inches='tight')
@@ -233,7 +249,7 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
     # 合并数据显示但分开处理
     all_data = {**averages, **verify_averages}
     
-    logging.info("\n有效参数-平均值数据：")
+    logging.info("有效参数-平均值数据：")
     for k in sorted(all_data.keys(), key=float):
         source = "(验证集)" if k in verify_averages else ""
         logging.info(f"参数: {k.ljust(10)} → 平均值: {all_data[k]:.4f} {source}")
@@ -361,7 +377,7 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
 # 主执行函数
 def main():
     setup_logging()
-    logging.info("===== 压力数据分析程序启动 =====")
+    logging.info("===== nPT/nVT绘图分析程序启动 =====")
     
     try:
         # 加载配置
@@ -404,15 +420,30 @@ def main():
         # 保存结果到output目录（修改后）
         result_path = os.path.join(output_dir, "average_pressures.txt")
         with open(result_path, "w") as f:
-            # 合并数据并排序
             all_data = {**averages, **verify_averages}
+            # 计算列宽
+            max_param_len = max(len(k) for k in all_data.keys())
+            col_width = max(max_param_len, 10)  # 最小列宽10字符
+
+            # 写入表头
+            header = (f"{'Parameter':>{col_width}}    {'Average':^12}    Notes")
+            separator = "-" * (col_width + 12 + 10)  # 动态分隔线长度
+            f.write(f"{header}\n{separator}\n")
+
+            # 合并数据并排序（按数值排序但保留原始字符串）
             sorted_params = sorted(all_data.keys(), key=lambda x: float(x))
             
             for param in sorted_params:
-                # 判断是否为验证数据
-                is_verify = param in verify_averages
-                note = "(验证集)" if is_verify else ""
-                f.write(f"{param}\t{all_data[param]:.4f}\t{note}\n")
+                # 原始参数字符串
+                param_str = param.rjust(col_width)
+                
+                # 格式化平均值（固定4位小数）
+                avg_str = f"{all_data[param]:12.4f}"
+                
+                # 验证集标注
+                note = "[Validation]" if param in verify_averages else ""
+                
+                f.write(f"{param_str}    {avg_str}    {note}\n")
         
         logging.info(f"平均值结果已保存到：{result_path}（含验证数据标注）")
         
@@ -439,12 +470,6 @@ def main():
                 logging.info(f"预测参数值: {target_param:.4f}")
             elif analyse_mode == 1:
                 logging.info("===== 基础分析完成 =====")
-        
-        # # 输出结果
-        # logging.info("\n===== 最终分析结果 =====")
-        # logging.info(f"线性拟合方程: y = {coeffs[0]:.4f}x + {coeffs[1]:.4f}")
-        # logging.info(f"目标压力值: {cfg['expected_pressure']}")
-        # logging.info(f"预测参数值: {target_param:.4f}")
         
     except Exception as e:
         logging.error("\n!!!!! 程序执行出错 !!!!!", exc_info=True)
