@@ -24,6 +24,8 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
+    # 直接关闭fontTools的日志
+    logging.getLogger('fontTools').setLevel(logging.WARNING)
 
 # 生成对比色函数
 def generate_contrast_color(base_hex, light=0.3, dark=0.7):
@@ -227,8 +229,12 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
             ax.tick_params(direction='in', which='both', top=False, right=False)
             plt.xlim(time_ps[0], time_ps[-1])
 
-            plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.png")
-            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            # 设置pdf字体嵌入
+            plt.rcParams['pdf.fonttype'] = 42  # 嵌入 TrueType 字体
+            plt.rcParams['ps.fonttype'] = 42   # 兼容 PostScript
+
+            plot_path = os.path.join(timeseries_dir, f"{folder_name}_plot.pdf")
+            plt.savefig(plot_path, format='pdf', bbox_inches='tight')
             plt.close()
             logging.info(f"时序图已保存到：{plot_path}")
             
@@ -365,10 +371,14 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
     
     # 自动调整范围
     ax.set_xlim(left=x_fit[0], right=x_fit[-1])
+
+    # 设置pdf字体嵌入
+    plt.rcParams['pdf.fonttype'] = 42  # 嵌入 TrueType 字体
+    plt.rcParams['ps.fonttype'] = 42   # 兼容 PostScript
     
     # 修改保存路径到output目录
-    analysis_path = os.path.join(output_dir, "average_pressure_analysis.png")
-    plt.savefig(analysis_path, dpi=300, bbox_inches='tight')
+    analysis_path = os.path.join(output_dir, "average_pressure_analysis.pdf")
+    plt.savefig(analysis_path, format='pdf', bbox_inches='tight')
     plt.close()
     logging.info(f"分析图表已保存到：{analysis_path}")
     
@@ -398,10 +408,6 @@ def main():
         output_dir = os.path.join(cfg["data_path"], "output")
         os.makedirs(output_dir, exist_ok=True)
         logging.info(f"输出目录已创建：{output_dir}")
-        
-        # 获取时间参数（带默认值）
-        start_ps = cfg.get("start_time_ps", 0)
-        end_ps = cfg.get("end_time_ps", 100)
         
         # 处理数据文件时传入新参数
         averages, verify_averages = process_data_files(
