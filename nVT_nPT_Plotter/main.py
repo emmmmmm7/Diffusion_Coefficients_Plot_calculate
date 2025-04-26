@@ -247,6 +247,10 @@ def process_data_files(root_dir, colors, output_dir, ignore_dirs, verify_dirs, s
 def analyze_averages(averages, verify_averages, colors, verify_color, expected_pressure, output_dir, analyse_model):
     """分析数据并区分验证集"""
 
+    # 参数有效性检查更新
+    if analyse_model not in (0,1,2,3):
+        raise ValueError("analyse_model参数必须为0、1、2或3")
+    
     """根据分析模式执行不同操作"""
     if analyse_model == 0:
         logging.info("分析模式0: 跳过所有分析")
@@ -324,8 +328,12 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
     # 1) 计算出实际数据范围 + 目标参数
     x_data_min = x.min()
     x_data_max = x.max()
-    x_min = min(x_data_min, target_param)
-    x_max = max(x_data_max, target_param)
+    if analyse_model == 2:
+        x_min = min(x_data_min, target_param)
+        x_max = max(x_data_max, target_param)
+    else:
+        x_min = x_data_min
+        x_max = x_data_max
 
     # 2) 给一点边距（如 5%）
     margin = (x_max - x_min) * 0.05
@@ -343,15 +351,16 @@ def analyze_averages(averages, verify_averages, colors, verify_color, expected_p
             alpha=0.8,
             zorder=2,
             label = f"Fit: " + r'$\mathregular{y = %.5fx %+0.4f}$' % (coeffs[0], coeffs[1])
-)
+    )
 
     # 目标线设置
-    ax.axhline(expected_pressure, color='#2c3e50', linestyle='-.', 
-              linewidth=1.5, alpha=0.7, zorder=1,
-              label=f'Target Pressure: {expected_pressure}')
-    ax.axvline(target_param, color='#2c3e50', linestyle='-.',
-              linewidth=1.5, alpha=0.7, zorder=1,
-              label=f'Predicted Parameter: {target_param:.8f}')
+    if analyse_model == 2:
+        ax.axhline(expected_pressure, color='#2c3e50', linestyle='-.', 
+                linewidth=1.5, alpha=0.7, zorder=1,
+                label=f'Target Pressure: {expected_pressure}')
+        ax.axvline(target_param, color='#2c3e50', linestyle='-.',
+                linewidth=1.5, alpha=0.7, zorder=1,
+                label=f'Predicted Parameter: {target_param:.8f}')
 
     # 坐标轴设置
     ax.set_xlabel("Parameter Value", fontsize=13, labelpad=8)
@@ -394,7 +403,7 @@ def main():
         cfg = config.config_data
 
         # 参数验证
-        if cfg.get("analyse_model", 2) not in (0,1,2):
+        if cfg.get("analyse_model", 2) not in (0,1,2,3):
             raise ValueError("analyse_model参数必须为0、1或2")
         if cfg.get("all_time", 0) not in (0,1):
             raise ValueError("all_time参数必须为0或1")
