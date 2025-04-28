@@ -21,95 +21,115 @@ class DiffusionPipeline:
         self.paths = get_paths()
         self.results = {}
         
-        # 初始化日志
+        # 初始化中文日志
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
             handlers=[
-                logging.FileHandler(os.path.join(self.paths["output_dir"], "process.log")),
+                logging.FileHandler(os.path.join(self.paths["output_dir"], "运行日志.log")), 
                 logging.StreamHandler()
             ]
         )
+        logging.info("初始化数据处理管道...")
     
     def process_temperature_group(self, temp_dir):
-        """处理单个温度组"""
+        """"处理单个温度组"""
         temp = os.path.basename(temp_dir)
-        logging.info(f"Processing {temp}...")
+        logging.info(f"正在处理温度组: {temp}")
         
-        # 获取拟合范围
+        # 获取配置参数
         fit_range = self.config['fit_ranges'].get(temp, (20, 30))
-        
+        data_dict = {}  # 当前温度组数据 {sample_id: (time, msd)}
+        fit_params = {} if self.config['enable_fitting'] else None
+
         # 遍历数据文件
         for fname in os.listdir(temp_dir):
-            if not fname.endswith(".dat"): continue
+            if not fname.endswith(".dat"):
+                continue
             
+            file_path = os.path.join(temp_dir, fname)
             # 数据读取与处理
             time, msd = DataProcessor.load_msd_data(
-                os.path.join(temp_dir, fname),
+                file_path,
                 self.config['time_range']
             )
-            if time is None: continue
+            if time is None or msd is None:
+                continue
+            
+            # 存储原始数据
+            sample_id = f"{temp}_{fname.split('.')[0]}"
+            data_dict[sample_id] = (time, msd)
             
             # 计算扩散系数
-            result = DataProcessor.calculate_diffusion(time, msd, fit_range)
-            if not result: continue
-            
-            # 存储结果
-            sample_id = f"{temp}_{fname.split('.')[0]}"
-            self.results[sample_id] = {
-                "temp": temp,
-                "D": result["D"],
-                "r_squared": result["r_squared"],
-                "fit_range": fit_range
-            }
-            
-    def run(self):
-        """执行完整流程"""
-        # 创建输出目录
-        os.makedirs(self.paths["output_dir"], exist_ok=True)
-        
-        # 遍历温度组
-        data_root = self.paths["data_root"]
-        for item in os.listdir(data_root):
-            dir_path = os.path.join(data_root, item)
-            if os.path.isdir(dir_path) and item != "output":
-                self.process_temperature_group(dir_path)
-        
-        # 保存结果
-        FileManager.save_results(self.results, self.paths["coefficients_csv"])
-        
-        # 绘制综合图表
-        self._generate_plots()
+            if self.config['enable_fitting']:
+                result = DataProcessor.calculate_diffusion(time, msd, fit_range)
+                if result:
+                    self.results[sample_id] = {
+                        "temp": temp,
+                        "D": result["D"],
+                        "r_squared": result["r_squared"],
+                        "fit_range": fit_range
+                    }
+                    fit_params[sample_id] = (result["slope"], result["intercept"])
+
+        # 为当前温度组生成图表
+        if data_dict:
+            Visualizer.plot_temperature_msd(
+                data_dict, 
+                fit_params,
+                self.paths["output_dir"],
+                temperature=temp,
+                fit_range=fit_range
+            )
+        else:
+            logging.warning(f"温度组 {temp} 无有效数据")
     
     def _generate_plots(self):
+
+        Visualizer.init_chinese_font()  # 初始化中文字体
+        
         """生成所有可视化图表"""
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        
-        # 绘制MSD曲线示例
-        sample_data = next(iter(self.results.values()))
-        Visualizer.plot_msd(ax1, sample_data['time'], sample_data['msd'])
-        
-        # 绘制阿伦尼乌斯图
-        temps = [float(d['temp'].strip('K')) for d in self.results.values()]
-        D_values = [d['D'] for d in self.results.values()]
-        Visualizer.plot_arrhenius(ax2, temps, D_values)
-        
-        plt.savefig(self.paths["plot_output"], dpi=300, bbox_inches='tight')
-        plt.close()
+        if not self.results:
+            logging.warning("无有效数据可供绘图")
+            return
+            
+        try:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+            
+            # 绘制MSD曲线示例
+            sample_data = next(iter(self.results.values()))
+            Visualizer.plot_msd(ax1, sample_data['time'], sample_data['msd'])
+            ax1.set_title("MSD曲线示例")
+            
+            # 绘制阿伦尼乌斯图
+            temps = [float(d['temp'].split('-')[0]) for d in self.results.values()]  # 适配温度格式
+            D_values = [d['D'] for d in self.results.values()]
+            Visualizer.plot_arrhenius(ax2, temps, D_values)
+            ax2.set_title("阿伦尼乌斯曲线")
+            
+            plt.savefig(self.paths["plot_output"], dpi=300, bbox_inches='tight')
+            plt.close()
+            logging.info("可视化图表已生成")
+        except Exception as e:
+            logging.error(f"图表生成失败: {str(e)}")
 
 if __name__ == "__main__":
-    pipeline = DiffusionPipeline()
-    
     try:
-        # 初始运行
+        pipeline = DiffusionPipeline()
         pipeline.run()
         
         # 配置热重载监控
+        logging.info("进入配置文件监控模式 (Ctrl+C退出)...")
         while True:
             time.sleep(10)
-            if os.path.getmtime(get_paths()["config"]) > pipeline.config['_last_modified']:
-                logging.info("Configuration updated, reloading...")
+            current_mtime = os.path.getmtime(get_paths()["config"])
+            if current_mtime > pipeline.config['_last_modified']:
+                logging.info("检测到配置文件变更，重新加载配置...")
                 pipeline = DiffusionPipeline()
                 pipeline.run()
+                
     except KeyboardInterrupt:
-        logging.info("Process terminated by user")
+        logging.info("用户中断程序执行")
+    except Exception as e:
+        logging.error(f"程序运行异常: {str(e)}")

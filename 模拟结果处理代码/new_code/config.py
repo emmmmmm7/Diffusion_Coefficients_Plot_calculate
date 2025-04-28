@@ -20,8 +20,8 @@ def get_paths():
         "data_root": _DATA_FOLDER,
         "config": _CONFIG_PATH,
         "output_dir": _OUTPUT_DIR,
-        "coefficients_csv": os.path.join(_OUTPUT_DIR, "diffusion_coefficients.csv"),
-        "plot_output": os.path.join(_OUTPUT_DIR, "diffusion_coefficient_plot.png")
+        "coefficients_csv": os.path.join(_OUTPUT_DIR, "扩散系数结果.csv"),
+        "plot_output": os.path.join(_OUTPUT_DIR, "扩散系数曲线图.png")
     }
 
 def load_config():
@@ -31,11 +31,13 @@ def load_config():
     """
     paths = get_paths()
     if os.path.exists(paths["config"]):
-        with open(paths["config"], 'r') as f:
-            return json.load(f)
+        with open(paths["config"], 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            config['_last_modified'] = os.path.getmtime(paths["config"])  # 记录最后修改时间
+            return config
     
     # 生成默认配置
-    print("Generating default config...")
+    print("正在生成默认配置文件...")
     default_config = {
         "enable_fitting": True,
         "target_element": "Ti",
@@ -46,11 +48,21 @@ def load_config():
             "method": "lowpass",  # none/lowpass/moving_avg
             "window_size": 21,
             "cutoff_freq": 0.1
-        }
+        },
+        "_last_modified": 0  # 初始化时间戳
     }
     
-    with open(paths["config"], 'w') as f:
-        json.dump(default_config, f, indent=4)
+    with open(paths["config"], 'w', encoding='utf-8') as f:
+        json.dump(default_config, f, indent=4, ensure_ascii=False)
+    
+    # 增强字体配置
+    try:
+        import matplotlib.pyplot as plt
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS']
+        plt.rcParams['axes.unicode_minus'] = False
+    except ImportError:
+        pass
+    
     return default_config
 
 def _auto_detect_fit_ranges():
