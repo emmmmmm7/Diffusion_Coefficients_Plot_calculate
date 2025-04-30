@@ -8,6 +8,7 @@
 4. 文件IO操作
 """
 import os
+import sys
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
@@ -115,12 +116,27 @@ class Visualizer:
     
     @staticmethod
     def init_chinese_font():
-        """初始化中文字体支持"""
+        """增强字体配置"""
         try:
-            rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'Microsoft YaHei']
+            # Windows系统字体
+            win_fonts = ['SimHei', 'Microsoft YaHei']
+            # MacOS系统字体
+            mac_fonts = ['Arial Unicode MS', 'Songti SC']
+            # Linux系统字体
+            linux_fonts = ['Noto Sans CJK SC']
+            
+            # 自动检测系统并设置字体
+            if os.name == 'nt':
+                rcParams['font.sans-serif'] = win_fonts
+            elif sys.platform == 'darwin':
+                rcParams['font.sans-serif'] = mac_fonts
+            else:
+                rcParams['font.sans-serif'] = linux_fonts
+                
             rcParams['axes.unicode_minus'] = False
+            logging.info("中文字体初始化成功")
         except Exception as e:
-            logging.warning(f"字体设置失败: {str(e)}")
+            logging.error(f"字体设置失败: {str(e)}")
 
     @staticmethod
     def plot_msd(ax, time, msd, fit_result=None, color='b'):
