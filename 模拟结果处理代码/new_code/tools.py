@@ -13,6 +13,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats, signal
 from matplotlib import rcParams
+import itertools
+import config
 
 class DataProcessor:
     """数据处理管道"""
@@ -134,6 +136,48 @@ class Visualizer:
             ax.plot(time[mask], fit_line[mask], '--', 
                    color=color, label='线性拟合')
         return ax
+    
+    @staticmethod
+    def plot_temperature_msd(data_dict, fit_params, output_dir, temperature, fit_range):
+        """为单个温度组绘制MSD曲线"""
+        plt.figure(figsize=(10, 6), dpi=150)
+        ax = plt.gca()
+        
+        # 设置中文字体
+        rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS']
+        rcParams['axes.unicode_minus'] = False
+
+        color_cycle = itertools.cycle(config.load_config()["color_palette"])
+        
+        # 绘制所有样本曲线
+        for idx, (sample_id, (time, msd)) in enumerate(data_dict.items()):
+            color = next(color_cycle)
+            
+            # 原始数据
+            ax.plot(time, msd, color=color, alpha=0.4, 
+                   label=f'{sample_id.split("_")[-1]} 原始数据')
+            
+            # 拟合曲线
+            if fit_params and sample_id in fit_params:
+                slope, intercept = fit_params[sample_id]
+                fit_line = slope * time + intercept
+                mask = (time >= fit_range[0]) & (time <= fit_range[1])
+                ax.plot(time[mask], fit_line[mask], '--', 
+                       color=color, linewidth=1.5,
+                       label=f'{sample_id.split("_")[-1]} 拟合曲线')
+
+        # 图表装饰
+        ax.set_title(f"温度组 {temperature} MSD曲线", fontsize=14)
+        ax.set_xlabel("时间 (ps)", fontsize=12)
+        ax.set_ylabel("MSD (Å²)", fontsize=12)
+        ax.grid(alpha=0.3)
+        ax.legend(ncol=2, fontsize=9)
+        
+        # 保存文件
+        output_path = os.path.join(output_dir, f"MSD_{temperature}.png")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        logging.info(f"已生成温度组图表: {output_path}")
 
     @staticmethod
     def plot_arrhenius(ax, temperatures, D_values):
