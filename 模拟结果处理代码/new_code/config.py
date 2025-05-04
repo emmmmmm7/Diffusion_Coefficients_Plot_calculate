@@ -5,47 +5,56 @@
 """
 import os
 import json
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ConfigManager:
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._load_config()
-        return cls._instance
-    
-    def _load_config(self):
-        """加载基础配置并动态生成必要参数"""
-        self.data_root = os.path.expanduser(
-            "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/Ti_qudai_File/nVT方案/3-Ptest-2025.4.24"
-        )
-        self.output_dir = os.path.join(self.data_root, "output")
-        
+    def __init__(self):
+        self.data_folder = "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/Ti_qudai_File/nVT方案/3-Ptest-2025.4.24"
+        self.output_dir = os.path.join(self.data_folder, "output")
+        self.config_path = os.path.join(self.data_folder, "config.json")
+        self.root_folder= self._load_root_folders()
+        self.config = self._load_config()
         # 基础配置
-        self.config = {
+    
+    def default_config(self):
+        """
+        默认配置
+        :return: 默认配置字典
+        """
+
+        diffusion_mode = "pressure"  # 默认值
+        pressure_pattern = r"\d+-(\d+\.\d+)"
+
+        return {
             "processing_mode": "diffusion",  # diffusion/pressure
             "log_level": "INFO",
+            "output_dir": "output",
+            "color_palette": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"],
             
             # 扩散系数模式配置
             "diffusion": {
                 "enable_fitting": True,
                 "target_element": "Ti",
-                "color_palette": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"],
-                "fit_ranges": self._auto_detect_fit_ranges(),
-                "time_range": (20, 30),
+                "fit_ranges": self._auto_detect_fit_ranges(diffusion_mode, pressure_pattern),
+                "start_time_ps": 20,
+                "end_time_ps": 30,
                 "smoothing": {
                     "method": "lowpass",
                     "window_size": 21,
                     "cutoff_freq": 0.1
-                }
+                },
+                "diffusion_mode": "temperature",  # 新增模式开关：temperature/pressure
+                "fixed_temperature": 700,        # 压力模式下的固定温度（K）
+                "pressure_pattern": r"\d+-(\d+\.\d+)",  # 压力值提取正则
             },
             
             # 压力分析模式配置
             "pressure": {
                 "ignore_dirs": [],
                 "verify_dirs": [],
-                "colors": ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd"],
                 "expected_pressure": 0.5,
                 "all_time": 1,
                 "start_time_ps": 0,
@@ -54,23 +63,58 @@ class ConfigManager:
                 "analyse_model": 3
             }
         }
+
+    def _load_root_folders(self):
+        """
+        加载文件夹配置
+        :return: 文件夹各文件信息
+        """
+        ignore_dirs = {"output", "INCAR"}  # 忽略这些文件夹
+        return [
+            os.path.join(self.data_folder, subdir)
+            for subdir in os.listdir(self.data_folder)
+            if os.path.isdir(os.path.join(self.data_folder, subdir)) and subdir not in ignore_dirs
+        ]
         
-    def _auto_detect_fit_ranges(self):
-        """自动生成扩散模式的拟合范围"""
-        temp_dirs = [d for d in os.listdir(self.data_root) 
-                    if os.path.isdir(os.path.join(self.data_root, d))]
-        return {temp: (20, 30) for temp in temp_dirs if temp != "output"}
+    def _load_config(self):
+        """
+        加载配置文件
+        :return: 配置字典
+        """
+        config_file_path = os.path.join(self.data_folder, "config.json")
+        if os.path.exists(config_file_path):
+            with open(config_file_path, 'r') as f:
+                return json.load(f)
+        else:
+            logger.info("未找到 config.json，动态生成默认配置...")
+            return self._generate_default_config(config_file_path)
+    
+    def _generate_default_config(self, config_file_path):
+        with open(config_file_path, 'w') as f:
+            json.dump(self.default_config(), f, indent=4)
+        return self.default_config()
+
+    def _auto_detect_fit_ranges(self, diffusion_mode="temperature", pressure_pattern=None):
+        """
+        根据模式自动生成拟合范围
+        :return: 拟合范围字典
+        """
+        dirs = [os.path.basename(folder) for folder in self.root_folder] 
+        if diffusion_mode == "pressure":
+            return {d: (20, 30) for d in dirs if re.match(pressure_pattern, d)}
+        else:
+            return {d: (20, 30) for d in dirs if d != "output"}
     
     @property
     def current_mode(self):
         return self.config["processing_mode"]
     
-    def get_config(self, mode=None):
-        mode = mode or self.current_mode
-        return {
-            "data_root": self.data_root,
-            "output_dir": self.output_dir,
-            **self.config[mode]
-        }
-
+    def get_config(self):
+        """
+        获取指定处理模式的配置
+        :param mode: 处理模式（diffusion/pressure）
+        :return: 配置字典
+        """
+        return self.config
+    
 config_manager = ConfigManager()
