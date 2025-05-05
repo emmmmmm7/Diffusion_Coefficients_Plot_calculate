@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 
 class ConfigManager:
     def __init__(self):
+        logger.info("初始化配置管理器...")
         self.data_folder = "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/Ti_qudai_File/nVT方案/3-Ptest-2025.4.24"
         self.output_dir = os.path.join(self.data_folder, "output")
         self.config_path = os.path.join(self.data_folder, "config.json")
         self.root_folder= self._load_root_folders()
         self.config = self._load_config()
+        logger.info("配置管理器初始化完成")
         # 基础配置
     
     def default_config(self):
@@ -41,11 +43,14 @@ class ConfigManager:
                 "fit_ranges": self._auto_detect_fit_ranges(diffusion_mode, pressure_pattern),
                 "start_time_ps": 20,
                 "end_time_ps": 30,
-                "smoothing": {
-                    "method": "lowpass",
+                "data_smooth_method": 0,  # 新增平滑方法配置
+                "smooth_params": {
                     "window_size": 21,
-                    "cutoff_freq": 0.1
-                },
+                    "poly_order": 3,
+                    "cutoff": 0.1,
+                    "fs": 10,
+                    "order": 5
+                    } ,
                 "diffusion_mode": "temperature",  # 新增模式开关：temperature/pressure
                 "fixed_temperature": 700,        # 压力模式下的固定温度（K）
                 "pressure_pattern": r"\d+-(\d+\.\d+)",  # 压力值提取正则
@@ -116,5 +121,10 @@ class ConfigManager:
         :return: 配置字典
         """
         return self.config
+    
+    def reload_config(self):
+        """强制重新加载配置文件"""
+        with open(self.config_path, 'r') as f:
+            self.config = json.load(f)
     
 config_manager = ConfigManager()

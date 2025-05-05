@@ -30,7 +30,6 @@ class ProcessorBase:
             logging.info(f"输出目录: {config_manager.output_dir }")
         except Exception as e:
             logging.error(f"处理失败: {str(e)}", exc_info=True)
-        self.config["_last_modified"] = os.path.getmtime(config_manager.config_path)
     
     def ensure_output_dir(self, output_path):
         """
@@ -83,27 +82,32 @@ class ProcessorBase:
         """执行处理流程"""
         if config_manager.current_mode == "diffusion":
             logging.info(f"启动处理模式: {config_manager.current_mode.upper()}")
-            DiffusionProcessor(config_manager).run()
+            MainProcessor = DiffusionProcessor(config_manager)
         elif config_manager.current_mode == "pressure":
             logging.info(f"启动处理模式: {config_manager.current_mode.upper()}")
-            PressureProcessor(config_manager.get_config()).run()
+            MainProcessor = PressureProcessor(config_manager)
         else:
             raise ValueError(f"未知处理模式: {config_manager.current_mode}")
+        MainProcessor.run()
 
 def main():
     try:
         pipeline = ProcessorBase()
         pipeline.run()
+        last_modified = os.path.getmtime(config_manager.config_path)
         
         # 配置热重载监控
         logging.info("进入配置文件监控模式 (Ctrl+C退出)...")
         while True:
-            time.sleep(10)
+            time.sleep(2)
             current_mtime = os.path.getmtime(config_manager.config_path)
-            if current_mtime > pipeline.config['_last_modified']:
+            if current_mtime > last_modified:
                 logging.info("检测到配置文件变更，重新加载配置...")
+                config_manager.reload_config()
                 pipeline = ProcessorBase()
                 pipeline.run()
+                last_modified = current_mtime
+                logging.info("进入配置文件监控模式 (Ctrl+C退出)...")
                 
     except KeyboardInterrupt:
         logging.info("用户中断程序执行")
