@@ -76,6 +76,12 @@ class ConfigManager:
             "err_plot": {
                 "enabled": True,
                 "err_filename": "ERR.csv"
+            },
+
+            # MSD模式配置
+            "MSD_plot": {
+                "target_element": "all",  # 计算所有元素的MSD，或指定元素符号如 "Ti"
+                "step_interval_fs": 1.0   # 时间步长，单位为飞秒(fs)
             }
         }
 
