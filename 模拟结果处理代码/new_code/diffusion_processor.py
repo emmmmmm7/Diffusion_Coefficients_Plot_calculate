@@ -17,6 +17,7 @@ import matplotlib.colors as mcolors
 from matplotlib.ticker import MaxNLocator
 import csv
 from matplotlib.ticker import ScalarFormatter
+import re
 
 class DiffusionProcessor:
     def __init__(self, config):
@@ -83,7 +84,8 @@ class DiffusionProcessor:
                 time_fs = float(data[0])
                 if start_fs <= time_fs <= end_fs:  # 新增过滤条件
                     time_original.append(time_fs / 1000)  # 转换为皮秒
-                    tot_msd.append(float(data[4]))
+                    tot_msd.append(float(data[int(self.diffusion_config["diffusion_direction"])]))
+                    # tot_msd.append(float(data[1]))
         # 归零化处理（关键修改点）
         if time_original:
             start_ps = time_original[0]  # 获取实际起始时间
@@ -365,7 +367,13 @@ class DiffusionProcessor:
         # 获取拟合范围
         try:
             fit_range = self.config.get_config()["diffusion"].get("fit_ranges", {})
-            fit_start, fit_end = fit_range[folder_name]
+            if self.diffusion_config["temperature_mode"] == "multiedition":
+                folder_name = folder_name.split("-")[0]
+                # logging.info({folder_name})  # 处理多版本温度数据
+            # fit_start, fit_end = fit_range[folder_name]
+            # 正确提取嵌套字典中的数值
+            fit_start = fit_range[folder_name]["fit_start"]
+            fit_end = fit_range[folder_name]["fit_end"]
         except ValueError as e:
             logging.error(f"温度 {folder_name} 的拟合范围加载失败: {e}")
             return
@@ -437,7 +445,10 @@ class DiffusionProcessor:
                     logging.info(f"处理压力数据集: {temp_str}")
                     T = self._parse_dataset(temp_str)
                 elif self.diffusion_config["diffusion_mode"] == "temperature":
-                     T = self._parse_dataset(temp_str)
+                    # if self.diffusion_config["temperature_mode"] == "multiedition":
+                    #     # 使用正则表达式提取温度
+                    #     temp_str = temp_str.split("-")[0]  # 假设温度在第一个部分
+                    T = temp_str
                 else:
                     logging.error(f"未知的扩散模式: {self.diffusion_config['diffusion_mode']}")
                     continue
@@ -456,99 +467,167 @@ class DiffusionProcessor:
     
     def _plot_diffusion_coefficients(self, csv_file, save_path):
         """
-        从 csv_file 读取扩散系数数据，按温度分组计算 ln(D) 的平均值及标准误，
+        从 csv_file 读取扩散系数数据，按版本区分数据点，
         仅使用正的扩散系数（大于 0）的数据，
-        绘制以温度为 x 轴、ln(D) 为 y 轴的折线图（数据点用方形标记，并标注误差值），
+        绘制以温度为 x 轴、ln(D) 为 y 轴的散点图，
         同时进行线性回归拟合，并将拟合线绘制在图中，
         最后将图保存到 save_path，并将拟合结果写入文本文件保存到 output 文件夹中。
+        
+        参数:
+            csv_file: CSV 文件路径
+            save_path: 图像保存路径
+            params: 参数字典，包含 temperature_mode 等设置
         """
+        
         # ==================== 数据读取与预处理 ==================== 
         raw_data = self._read_diffusion_csv(csv_file)
         if not raw_data:
             logging.error("未读取到有效数据，请检查 CSV 文件格式")
             return
 
+        # 判断是否为多版本模式
+        is_multiedition = self.diffusion_config.get("temperature_mode") == "multiedition"
+        
         # 初始化数据容器
-        inverse_temps = []  # x轴: 1/T (K⁻¹)
-        lnD_means = []      # y轴: ln(D) 均值
-
+        all_x = []  # 所有数据点的 x 坐标 (1000/T)
+        all_y = []  # 所有数据点的 y 坐标 (ln(D))
+        version_data = {}  # 按版本分组的数据
+        
         # 处理每个温度组
-        for T in sorted(raw_data.keys(), reverse=True):  # 温度从高到低排序
-            D_values = np.array(raw_data[T])
+        if is_multiedition:
+            # 多版本温度模式处理
+            logging.info("使用多版本温度模式处理数据")
             
-            # 过滤非正值
-            valid_D = D_values[D_values > 0]
-            if len(valid_D) == 0:
-                logging.warning(f"温度 {T}K 下无有效扩散系数，已跳过")
-                continue
+            # 按版本分组数据
+            for full_temp_name, D_values in raw_data.items():
+                # 提取版本信息
+                if '-' in full_temp_name:
+                    parts = full_temp_name.split('-')
+                    base_temp = parts[0]
+                    version = parts[1] if len(parts) > 1 else "v1"
+                else:
+                    base_temp = full_temp_name
+                    version = "v1"
+                
+                # 计算温度值
+                try:
+                    temp_value = int(base_temp.rstrip('K'))
+                    x_value = 1000 / temp_value
+                except ValueError:
+                    logging.warning(f"无法解析温度值: {base_temp}")
+                    continue
+                
+                # 过滤非正值并计算ln(D)
+                for D in D_values:
+                    if D > 0:
+                        y_value = np.log(D)
+                        all_x.append(x_value)
+                        all_y.append(y_value)
+                        
+                        # 按版本分组
+                        if version not in version_data:
+                            version_data[version] = {'x': [], 'y': []}
+                        version_data[version]['x'].append(x_value)
+                        version_data[version]['y'].append(y_value)
             
-            # 计算统计量
-            lnD = np.log(valid_D)
-            mean_lnD = np.mean(lnD)
+            logging.info(f"共处理 {len(all_x)} 个数据点，来自 {len(version_data)} 个版本")
+        else:
+            # 原有处理模式
+            for T, D_values in raw_data.items():
+                try:
+                    temp_value = int(T.rstrip('K'))
+                    x_value = 1000 / temp_value
+                except ValueError:
+                    logging.warning(f"无法解析温度值: {T}")
+                    continue
+                
+                # 过滤非正值并计算ln(D)
+                for D in D_values:
+                    if D > 0:
+                        y_value = np.log(D)
+                        all_x.append(x_value)
+                        all_y.append(y_value)
             
-            inverse_temps.append(1000 / T)  # 转换为 1/T (10³·K⁻¹)
-            lnD_means.append(mean_lnD)
-            logging.info(f"温度 {T}K: ln(D) = {mean_lnD:.4f}")
+            # 将所有数据标记为默认版本
+            version_data["default"] = {'x': all_x, 'y': all_y}
+            logging.info(f"共处理 {len(all_x)} 个数据点")
 
-        if not inverse_temps:
+        if not all_x:
             logging.error("无有效数据可供绘图")
             return
-
-        # 转换为 numpy array 便于计算
-        x = np.array(inverse_temps)
-        y = np.array(lnD_means)
 
         # ==================== 绘图样式配置 ====================
         plt.figure(figsize=(8, 6), dpi=150)
         ax = plt.gca()
         
-        # 全局字体设置
+        # 设置全局字体
         plt.rcParams.update({
-            'font.family': 'Times New Roman',
-            'mathtext.fontset': 'stix',
-            'axes.labelsize': 12,
-            'xtick.labelsize': 10,
-            'ytick.labelsize': 10
+            'font.family': 'serif',
+            'font.serif': ['Times New Roman'],
+            'mathtext.fontset': 'stix'  # 数学符号风格
         })
 
         # 颜色方案
-        PRIMARY_COLOR = '#2C5F94'   # 深蓝色
-        SECONDARY_COLOR = '#97CC04' # 鲜绿色
-        ERROR_COLOR = '#6B6B6B'     # 中性灰
+        VERSION_COLORS = {
+            'v1': '#2C5F94',   # 深蓝色
+            'v2': '#97CC04',   # 鲜绿色
+            'v3': '#F4364C',   # 红色
+            'v4': '#FFB300',   # 橙色
+            'v5': '#804FB3',   # 紫色
+            'default': '#2C5F94'  # 默认颜色
+        }
+        
+        VERSION_MARKERS = {
+            'v1': 'o',  # 圆形
+            'v2': 's',  # 方形
+            'v3': '^',  # 三角形
+            'v4': 'D',  # 菱形
+            'v5': 'v',  # 倒三角形
+            'default': 'o'  # 默认标记
+        }
 
         # ==================== 数据可视化 ====================
-        # 主数据点（带误差条）
-        ax.errorbar(
-            x, y, 
-            fmt='o', markersize=4,
-            markerfacecolor='white',
-            markeredgewidth=1.5,       
-            linestyle='',
-            color=PRIMARY_COLOR,
-            label='Experimental Data'
-        )
+        # 为每个版本绘制数据点
+        for version, data in version_data.items():
+            color = VERSION_COLORS.get(version, VERSION_COLORS['default'])
+            marker = VERSION_MARKERS.get(version, VERSION_MARKERS['default'])
+            
+            ax.scatter(
+                data['x'], data['y'],
+                marker=marker,
+                color=color,
+                s=60,
+                edgecolors='white',
+                linewidth=1,
+                label=f"{version}" if is_multiedition else "Experimental Data"
+            )
 
         # ==================== 线性回归 ====================
-        regress = linregress(x, y)
-        slope = regress.slope
-        intercept = regress.intercept
-        r_squared = regress.rvalue**2
-        
-        # 生成拟合线
-        x_fit = np.linspace(x.min(), x.max(), 100)
-        y_fit = intercept + slope * x_fit
+        # 使用所有数据点进行拟合
+        if all_x and all_y:
+            regress = linregress(all_x, all_y)
+            slope = regress.slope
+            intercept = regress.intercept
+            r_squared = regress.rvalue**2
+            
+            # 生成拟合线
+            x_fit = np.linspace(min(all_x), max(all_x), 100)
+            y_fit = intercept + slope * x_fit
 
-        # 拟合线绘制
-        ax.plot(
-            x_fit, y_fit, 
-            color=SECONDARY_COLOR, 
-            linestyle='--',
-            linewidth=2,
-            label=(
-                r'$\mathregular{\ln(D) = \frac{%.2f}{T}  %+.2f}$' % (slope*1000, intercept) + '\n' + 
-                r'$\mathregular{R^2 = %.3f}$' % r_squared
+            # 拟合线绘制
+            ax.plot(
+                x_fit, y_fit, 
+                color='#97CC04', 
+                linestyle='--',
+                linewidth=2,
+                label=(
+                    r'$\mathregular{\ln(D) = \frac{%.2f}{T}  %+.2f}$' % (slope*1000, intercept) + '\n' + 
+                    r'$\mathregular{R^2 = %.3f}$' % r_squared
+                )
             )
-        )
+        else:
+            logging.error("无有效数据进行线性回归")
+            slope, intercept, r_squared = 0, 0, 0
 
         # ==================== 坐标轴优化 ====================
         # X轴设置
@@ -573,6 +652,7 @@ class DiffusionProcessor:
         
         # 坐标轴刻度朝内
         ax.tick_params(direction='in')
+        
         # ==================== 图例与输出 ====================
         ax.legend(
             loc='best',
@@ -596,7 +676,14 @@ class DiffusionProcessor:
         - Intercept (lnD0): {intercept:.2e}
         - R²: {r_squared:.4f}
         - D0: {D0:.2e} m²/s
+        - Number of data points: {len(all_x)}
         """
+        
+        # 添加多版本模式下的额外信息
+        if is_multiedition:
+            result_text += "\nData points by version:\n"
+            for version, data in version_data.items():
+                result_text += f"  - Version {version}: {len(data['x'])} data points\n"
         
         result_path = os.path.join(os.path.dirname(save_path), "fitting_results.txt")
         with open(result_path, 'w') as f:
@@ -608,23 +695,31 @@ class DiffusionProcessor:
 
         logging.info(f"发现 {len(self.config.root_folder)} 个数据组: {', '.join([os.path.basename(folder) for folder in self.config.root_folder])}")
 
-        # 处理每个温度组
-        for root_folder in self.config.root_folder:
-            data_name = self._get_dataset_name(root_folder)
-            logging.info(f"开始处理数据组: {data_name}")
+        logging.info(f"是否绘制扩散系数图: {self.diffusion_config.get('just_plotDC', "false")}")
+        if self.diffusion_config.get("just_plotDC", "false").lower() == "true": 
+            # 处理每个温度组
+            for root_folder in self.config.root_folder:
+                data_name = self._get_dataset_name(root_folder)
+                logging.info(f"开始处理数据组: {data_name}")
+                try:
+                    self._process_data_folder(root_folder, data_name)
+                    logging.info(f"处理完成: {data_name}")
+                except Exception as e:
+                    logging.error(f"处理数据组 {data_name} 时发生错误: {e}", exc_info=True)
+            
+            # 保存扩散系数结果到 CSV 文件
             try:
-                self._process_data_folder(root_folder, data_name)
-                logging.info(f"处理完成: {data_name}")
+                output_csv_file = os.path.join(self.config.output_dir, "diffusion_coefficients.csv")
+                self._save_diffusion_results(output_csv_file)
+                logging.info(f"扩散系数结果已保存至 {output_csv_file}")
             except Exception as e:
-                logging.error(f"处理数据组 {data_name} 时发生错误: {e}", exc_info=True)
-        
-        # 保存扩散系数结果到 CSV 文件
-        try:
+                logging.error(f"保存扩散系数结果时发生错误: {e}")
+        else:
+            logging.info("仅绘制扩散系数图，不进行数据处理")
             output_csv_file = os.path.join(self.config.output_dir, "diffusion_coefficients.csv")
-            self._save_diffusion_results(output_csv_file)
-            logging.info(f"扩散系数结果已保存至 {output_csv_file}")
-        except Exception as e:
-            logging.error(f"保存扩散系数结果时发生错误: {e}")
+            if not os.path.exists(output_csv_file):
+                logging.error(f"未找到扩散系数 CSV 文件: {output_csv_file}")
+                return
 
         # 自动生成 Diffusion Coefficient 图（纵轴为 log(D) 或 log₁₀(D)；这里假设使用 log(D) 的话 D0 = exp(intercept)，  
         # 如果使用 log₁₀(D) 则 D0 = 10^(intercept)；请根据实际需要选择）

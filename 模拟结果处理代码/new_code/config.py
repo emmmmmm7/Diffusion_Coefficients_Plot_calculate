@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class ConfigManager:
     def __init__(self):
         logger.info("初始化配置管理器...")
-        self.data_folder = "/Users/rrw/Documents/postgraduate/矿物年代学/扩散系数模拟相关/Ti_qudai_File/nVT方案/3-Ptest-2025.4.24"
+        self.data_folder = "/Users/rrw/Documents/postgraduate/MineralogicalGeochronology/DiffusionCoefficient/SnO2/SnO2数据整合"
         self.output_dir = os.path.join(self.data_folder, "output")
         self.config_path = os.path.join(self.data_folder, "config.json")
         self.root_folder= self._load_root_folders()
@@ -28,7 +28,8 @@ class ConfigManager:
         """
 
         diffusion_mode = "pressure"  # 默认值
-        pressure_pattern = r"\d+-(\d+\.\d+)"
+        # pressure_pattern = r"\d+-(\d+\.\d+)"
+        pressure_pattern = r"\d+-\w+-\d+"
 
         return {
             "processing_mode": "diffusion",  # diffusion/pressure
@@ -52,6 +53,9 @@ class ConfigManager:
                     "order": 5
                     } ,
                 "diffusion_mode": "temperature",  # 新增模式开关：temperature/pressure
+                "diffusion_direction": "4", # 扩散方向，1-x, 2-y, 3-z, 4-total
+                "just_plotDC": "False",  # 仅绘制扩散系数曲线
+                "temperature_mode": "multiedition",  # 温度模式：multiedition/constant
                 "fixed_temperature": 700,        # 压力模式下的固定温度（K）
                 "pressure_pattern": r"\d+-(\d+\.\d+)",  # 压力值提取正则
             },
@@ -66,6 +70,12 @@ class ConfigManager:
                 "end_time_ps": 3,
                 "plot_model": 1,
                 "analyse_model": 3
+            },
+
+            # ERR模式配置
+            "err_plot": {
+                "enabled": True,
+                "err_filename": "ERR.csv"
             }
         }
 

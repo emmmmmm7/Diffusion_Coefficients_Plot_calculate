@@ -11,6 +11,8 @@ logging.basicConfig(
 from config import config_manager
 from diffusion_processor import DiffusionProcessor
 from pressure_processor import PressureProcessor
+from ERR_plot_processor import ERRPlotProcessor
+from MSD_Processor import MSDProcessor
 import time
 import os
 import matplotlib
@@ -86,6 +88,12 @@ class ProcessorBase:
         elif config_manager.current_mode == "pressure":
             logging.info(f"启动处理模式: {config_manager.current_mode.upper()}")
             MainProcessor = PressureProcessor(config_manager)
+        elif config_manager.current_mode == "err_plot":
+            logging.info(f"启动处理模式：{config_manager.current_mode.upper()}")
+            MainProcessor = ERRPlotProcessor(config_manager)
+        elif config_manager.current_mode == "MSD_plot":
+            logging.info(f"启动处理模式：{config_manager.current_mode.upper()}")
+            MainProcessor = MSDProcessor(config_manager)
         else:
             raise ValueError(f"未知处理模式: {config_manager.current_mode}")
         MainProcessor.run()
